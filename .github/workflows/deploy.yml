@@ -4,12 +4,22 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
 
 jobs:
   deploy-infra:
-    name: Apply Infrastructure (prod)
+    name: Apply Infrastructure (${{ github.event.inputs.environment || 'prod' }})
     runs-on: ubuntu-latest
-    environment: prod
+    environment: ${{ github.event.inputs.environment || 'prod' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -19,13 +29,13 @@ jobs:
           tofu_version: "1.6.x"
 
       - name: Init
-        working-directory: infra/environments/prod
+        working-directory: infra/environments/${{ github.event.inputs.environment || 'prod' }}
         run: tofu init
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
 
       - name: Apply
-        working-directory: infra/environments/prod
+        working-directory: infra/environments/${{ github.event.inputs.environment || 'prod' }}
         run: tofu apply -auto-approve
         env:
           TF_VAR_supabase_access_token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -35,9 +45,9 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
   deploy-database:
-    name: Push Migrations & Deploy Functions (prod)
+    name: Push Migrations & Deploy Functions (${{ github.event.inputs.environment || 'prod' }})
     runs-on: ubuntu-latest
-    environment: prod
+    environment: ${{ github.event.inputs.environment || 'prod' }}
     needs: deploy-infra
 
     steps:
