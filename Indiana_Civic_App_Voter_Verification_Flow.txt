@@ -1,0 +1,82 @@
+
+### Voting Verification Flow (MVP — Phase 1)
+
+XP Award: +25 XP on successful verification
+Badge Awarded: "Voter Verified"
+Flutter Packages: tflite_flutter, exif, image_picker
+
+---
+
+1. Mission Entry
+- User selects the "Mini Voter Challenge" mission from the Home screen.
+- Mission card shows: "Snap your 'I Voted' sticker to earn 25 XP and the Voter Verified badge!"
+
+---
+
+2. Self-Report Prompt
+- App prompts: "Did you vote today?"
+- User taps "Yes, I Voted!"
+- App checks Supabase config: is today a valid election day? (configurable election_dates table)
+- If not an election day, mission is gated with a message: "Check back on Election Day!"
+
+---
+
+3. Proof Photo Upload
+- App prompts: "Snap a picture of your 'I Voted' sticker."
+- User captures photo via in-app camera (image_picker package).
+- Privacy notice shown: "Only the sticker is analyzed. No personal info is stored or transmitted."
+- Photo is processed entirely on-device — never uploaded to the server.
+
+---
+
+4. On-Device Verification (Two-Step)
+
+Step A — ML Sticker Detection (tflite_flutter):
+- A pre-trained MobileNet model (fine-tuned on "I Voted" sticker images) runs on-device.
+- Model classifies the image as "sticker" or "not_sticker."
+- Confidence threshold: ≥ 0.80 required to pass.
+
+Step B — EXIF Date Validation (exif package):
+- App reads the photo's EXIF DateTimeOriginal metadata.
+- Photo must have been taken within the last 24 hours on a configured election day.
+- If EXIF data is missing or date is outside the window, validation fails.
+
+Both steps must pass for verification to succeed.
+
+---
+
+5. Success Flow
+- Both checks pass → mission marked complete in Supabase.
+- User receives:
+  - +25 XP credited to account
+  - "Voter Verified" badge awarded (permanent, displayed in Profile > Badges)
+  - Indy the Cardinal celebration animation
+  - Dashboard streak updated
+
+---
+
+6. Failure / Error Flow
+
+If ML check fails (sticker not detected):
+- Message: "Hmm, we couldn't confirm the sticker. Try a clearer photo in good lighting."
+- User may retry up to 3 times in the same session.
+- After 3 failed attempts: mission remains incomplete; 0 XP awarded.
+- User can skip: "Skip for now" dismisses the mission with no XP.
+
+If EXIF date check fails (photo not from today):
+- Message: "Looks like this photo wasn't taken today. Please take a fresh photo!"
+- User is returned to the camera prompt to retake.
+
+If EXIF data is missing:
+- Message: "We couldn't read the photo date. Please take a new photo with your camera (not from your gallery)."
+- User is returned to the camera prompt.
+
+If not an election day (Supabase config gate):
+- Mission card is locked with countdown: "Next election: [date]"
+
+---
+
+7. Dashboard Update
+- XP total, level, and streak updated on Home screen.
+- Indy the Cardinal celebrates the action with Indiana-flavored copy.
+- No GPS tracking or personal voter info is stored beyond the completion timestamp.

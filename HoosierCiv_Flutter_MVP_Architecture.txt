@@ -1,0 +1,155 @@
+
+HoosierCiv Flutter MVP Architecture
+===================================
+
+Mobile-first, Indiana-only civic engagement MVP using Flutter + Supabase.
+
+-----------------------------------
+1. Folder Structure
+-----------------------------------
+lib/
+ ├── main.dart
+ ├── app/
+ │    ├── app_widget.dart
+ │    ├── router.dart
+ │    └── theme.dart
+ ├── core/
+ │    ├── constants/
+ │    ├── utils/
+ │    ├── widgets/
+ │    └── errors/
+ ├── data/
+ │    ├── models/
+ │    │     ├── user_model.dart
+ │    │     ├── mission_model.dart
+ │    │     ├── mission_completion_model.dart
+ │    │     ├── xp_event_model.dart
+ │    │     ├── representative_model.dart
+ │    │     ├── badge_model.dart
+ │    │     └── news_article_model.dart
+ │    ├── services/
+ │    │     ├── supabase_service.dart
+ │    │     ├── civic_api_service.dart
+ │    │     ├── openstates_service.dart
+ │    │     ├── rss_service.dart
+ │    │     ├── gamification_service.dart
+ │    │     ├── notification_service.dart
+ │    │     ├── image_verification_service.dart
+ │    │     └── social_share_service.dart
+ │    └── repositories/
+ │          ├── missions_repository.dart
+ │          └── user_repository.dart
+ ├── features/
+ │    ├── onboarding/
+ │    │     ├── onboarding_screen.dart
+ │    │     ├── address_verification_screen.dart
+ │    │     └── interest_select_screen.dart
+ │    ├── home/
+ │    │     ├── home_screen.dart
+ │    │     ├── mission_card.dart
+ │    │     └── daily_streak_widget.dart
+ │    ├── missions/
+ │    │     ├── mission_detail_screen.dart
+ │    │     ├── call_legislator_screen.dart
+ │    │     └── check_registration_screen.dart
+ │    ├── bills/
+ │    │     ├── bill_detail_screen.dart
+ │    │     ├── bill_news_feed.dart
+ │    │     └── bill_quiz.dart
+ │    └── profile/
+ │          ├── profile_screen.dart
+ │          ├── badges_screen.dart
+ │          └── streaks_screen.dart
+ └── state/
+      ├── app_state.dart
+      ├── user_cubit.dart
+      ├── missions_cubit.dart
+      └── gamification_cubit.dart
+
+-----------------------------------
+2. Core MVP Screens (Phase 1 Only)
+-----------------------------------
+- Onboarding (Indiana ZIP code verification, civic data lookup)
+- Home (missions, XP, streaks, Indy the Cardinal mascot)
+- Call Your Legislator mission
+- Check Voter Registration mission
+- Bill Detail + RSS news feed
+- Profile (badges, history)
+
+-----------------------------------
+3. Data Models
+-----------------------------------
+UserModel         – auth ID, email, display name, XP total, level, streak data
+MissionModel      – id, title, description, category, xp_reward, completion_type,
+                    badge_awarded, streak_eligible, difficulty, phase
+MissionCompletion – user_id, mission_id, completed_at, proof_url
+XpEvent           – user_id, source, amount, created_at
+RepresentativeModel – name, chamber, district, phone, email, party
+BadgeModel        – id, name, description, icon_asset, earned_at
+NewsArticleModel  – id, bill_id, headline, summary, url, published_at, source
+
+-----------------------------------
+4. Backend Services
+-----------------------------------
+- Supabase (auth, PostgreSQL DB, Edge Functions, Storage)
+- Google Civic Info API (address → representative lookup)
+- OpenStates API (Indiana bill tracking)
+- Google News RSS (bill-keyed article feeds)
+- Firebase Cloud Messaging (push notifications, free tier)
+- Firebase Analytics (usage analytics, free tier)
+- Anthropic Claude API (auto-generate bill quizzes via Supabase Edge Function)
+
+-----------------------------------
+5. Key Flutter Packages
+-----------------------------------
+- flutter_bloc / cubit (state management)
+- supabase_flutter (Supabase client)
+- hive (local offline cache for missions and bills)
+- tflite_flutter (on-device voter sticker ML detection)
+- exif (photo EXIF date metadata extraction)
+- share_plus (native OS share sheet)
+- firebase_messaging (push notifications)
+- firebase_analytics (analytics)
+- go_router (navigation/routing)
+- cached_network_image (image caching)
+- url_launcher (open external links)
+
+-----------------------------------
+6. Gamification Engine
+-----------------------------------
+XP Awards:
+- Call legislator:              +20 XP  (Phase 1)
+- Check voter registration:     +10 XP  (Phase 1)
+- Voter sticker photo verified: +25 XP  (Phase 1)
+- Tap a bill news article:      +5 XP   (Phase 1)
+- Read full in-app summary:     +10 XP  (Phase 1, separate from tap XP)
+- Bill quiz (correct answer):   +15 XP  (Phase 1)
+
+Level Progression:
+- 100 XP per level
+- Max level: 20
+- Cosmetic reward unlocked at each level
+
+Streaks:
+- Any 1 completed mission per calendar day keeps streak alive
+- Resets at midnight local device timezone
+
+Badges:
+- First Call        (complete first Call Legislator mission)
+- Voter Verified    (complete voter sticker verification)
+- 3-Day Streak      (maintain a 3-day streak)
+- Informed Advocate (complete Bill Quiz after reading news article)
+- Civic Rookie → Civic Champ (level milestone badges)
+
+-----------------------------------
+7. Monthly Cost Estimate
+-----------------------------------
+- Supabase:        Free tier up to 500 MB DB / 1 GB storage; ~$25/month at scale
+- Anthropic API:   ~$0.01 per bill quiz generated (Claude Haiku)
+- Firebase FCM:    Free tier (push notifications)
+- Firebase Analytics: Free tier
+- Google APIs:     Free tier (Civic Info API, Maps)
+- OpenStates API:  Free tier available
+- Apple/Google stores: One-time $99/$25 developer fees
+
+MVP estimated monthly cost: ~$0–$5 (well within free tiers at low usage)

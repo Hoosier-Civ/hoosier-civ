@@ -1,0 +1,144 @@
+HoosierCiv Technical Decisions
+================================
+
+Single source of truth for all architectural and implementation decisions.
+Update this file whenever a decision is changed or a new one is made.
+
+-----------------------------------
+1. Authentication
+-----------------------------------
+Provider: Supabase Auth
+- Primary: Email/password (magic link optional)
+- Guest option: Anonymous Supabase session during onboarding; user prompted to register
+  before first mission completion to prevent XP loss.
+- No OAuth (Google/Apple Sign-In) in MVP to minimize complexity.
+
+-----------------------------------
+2. Address / District Verification
+-----------------------------------
+Method: ZIP code input → Google Civic Info API lookup
+- User enters their Indiana ZIP code during onboarding.
+- App calls Google Civic Info API with the ZIP to retrieve:
+  - State House district
+  - State Senate district
+  - US Congressional district
+  - Representative names and contact info
+- No USPS address verification API needed.
+- Result stored in Supabase user profile (district fields).
+
+-----------------------------------
+3. Push Notifications
+-----------------------------------
+Provider: Firebase Cloud Messaging (FCM)
+- Free tier (no cost for typical MVP usage).
+- Flutter package: firebase_messaging.
+- Triggers: bill movement, new news articles on watched bills, election day reminders.
+- Notification preferences stored per-user in Supabase.
+
+-----------------------------------
+4. Analytics
+-----------------------------------
+Provider: Firebase Analytics
+- Free tier.
+- Flutter package: firebase_analytics.
+- Tracked events: screen views, mission starts, mission completions, XP earned,
+  badge awarded, quiz answered.
+- No PII tracked beyond anonymous Supabase user ID.
+
+-----------------------------------
+5. Local Caching / Offline Support
+-----------------------------------
+Package: hive (NoSQL key-value store, pure Dart)
+- Cached data: mission list, bill list, recent news articles, user XP/level/streak.
+- Cache is written on each successful API response.
+- App reads from hive first; fetches from Supabase if stale (TTL: 15 minutes for
+  missions, 5 minutes for news articles).
+- Streak data written to hive immediately on mission completion; synced to Supabase
+  on next successful network request.
+
+-----------------------------------
+6. Bill Quiz Generation
+-----------------------------------
+Trigger: Supabase Edge Function ("generate-bill-quiz") fires on INSERT into bills table.
+Model: Anthropic Claude API — Haiku model (claude-haiku-4-5)
+Cost: ~$0.01 per bill quiz generated.
+Prompt context sent to Claude: bill title, official summary, latest 3 news headlines.
+Output: 3 multiple-choice questions (JSON), stored in Supabase quizzes table.
+No human review required before quiz is published.
+If generation fails, quiz is queued for retry (up to 3 attempts); bill card shows
+"Quiz coming soon" until a quiz row exists.
+
+-----------------------------------
+7. Voter Sticker ML Verification
+-----------------------------------
+Framework: tflite_flutter (on-device inference, free, no server cost)
+Model: MobileNet fine-tuned on a dataset of "I Voted" sticker images.
+Confidence threshold: ≥ 0.80 to classify as "sticker."
+Processing: Fully on-device — photo is never uploaded to any server.
+Fallback: If model fails to load, verification step is skipped and full +25 XP is
+  awarded with a manual self-report confirmation instead.
+
+-----------------------------------
+8. EXIF Date Validation
+-----------------------------------
+Package: exif (pure Dart EXIF reader)
+Field read: DateTimeOriginal
+Rule: Photo must be taken within 24 hours of the current time AND the current date
+  must be a configured election day in Supabase (election_dates table).
+If EXIF is missing: user is prompted to retake photo with the in-app camera
+  (gallery photos from old dates cannot be used).
+
+-----------------------------------
+9. Social Sharing
+-----------------------------------
+Package: share_plus (Flutter plugin for native OS share sheet)
+Behavior: Opens the device's native share sheet (iOS Share Sheet / Android Intent).
+Content: Pre-written civic message with the bill title and a link to the bill's
+  Indiana Legislature page.
+No specific social platform is required or targeted.
+XP is awarded on share sheet open (+10 XP), not on platform-specific confirmation
+  (which is not accessible cross-platform).
+
+-----------------------------------
+10. Level Progression Formula
+-----------------------------------
+- XP per level: 100 XP (flat, not exponential)
+- Max level: 20
+- Current level = floor(total_xp / 100), capped at 20
+- Displayed on Profile and Home screens.
+
+-----------------------------------
+11. Streak Reset Logic
+-----------------------------------
+- A streak day is any calendar day (00:00–23:59) in the user's local device timezone.
+- Streak counter is checked and potentially reset on app open.
+- Reset condition: last mission completion date < yesterday's date.
+- Streak is NOT reset if the app is opened but no mission is completed yet today
+  (grace period until 23:59).
+
+-----------------------------------
+12. Data Retention & Privacy
+-----------------------------------
+- User deletion: Deleting an account cascades DELETE to all Supabase rows tied to
+  that user_id (RLS policy + trigger).
+- PII stored: Auth email only (required for account recovery). Display name is optional.
+- No voter registration data, no GPS coordinates, no personal voting records are stored.
+- Voter sticker photos are processed on-device and discarded; only completion timestamp
+  is stored in Supabase.
+- Analytics data is anonymized (Firebase anonymous ID, not linked to auth email).
+
+-----------------------------------
+13. State Management
+-----------------------------------
+Package: flutter_bloc (BLoC/Cubit pattern)
+Cubits:
+- UserCubit: auth state, user profile, XP, level
+- MissionsCubit: mission list, completion state
+- GamificationCubit: streak, badges, XP events
+
+-----------------------------------
+14. Navigation / Routing
+-----------------------------------
+Package: go_router
+MVP routes: /, /onboarding, /home, /missions/:id, /bills/:id, /profile, /profile/badges
+Deep link support: bill detail links from push notifications (/bills/:id).

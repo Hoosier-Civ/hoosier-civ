@@ -1,0 +1,94 @@
+HoosierCiv Phase Roadmap
+========================
+
+Defines the scope of each development phase. MVP = Phase 1.
+Features not in Phase 1 are excluded from initial launch even if partially built.
+
+-----------------------------------
+Phase 1 — MVP (Launch)
+-----------------------------------
+Goal: Prove core engagement loop with minimal scope. Ship fast, validate retention.
+
+Screens (exactly 6):
+1. Onboarding         — Indiana ZIP code entry, Google Civic Info API lookup, interest tags
+2. Home               — Daily mission cards, XP bar, streak counter, Indy mascot
+3. Call Legislator    — Pre-written talking points, one-tap phone dialer, self-report confirm
+4. Check Voter Reg    — Link to Indiana voter registration portal, completion confirm
+5. Bill Detail + RSS  — Bill summary, news feed, bill quiz (Claude-generated), article XP
+6. Profile            — XP total, current level, badges earned, streak history
+
+Missions in Phase 1:
+- Call a Legislator (+20 XP)
+- Check Voter Registration (+10 XP)
+- Mini Voter Challenge — sticker photo (+25 XP)
+- Tap a bill news article (+5 XP)
+- Read full in-app bill summary (+10 XP)
+- Bill Quiz (+15 XP)
+
+Backend in Phase 1:
+- Supabase auth (email + anonymous guest)
+- Google Civic Info API (representative lookup)
+- OpenStates API (Indiana bill data)
+- Google News RSS (bill news feeds)
+- Anthropic Claude API (bill quiz generation via Edge Function)
+- Firebase FCM (push notifications for bill updates)
+- Firebase Analytics (event tracking)
+
+Flutter packages in Phase 1:
+- flutter_bloc, supabase_flutter, hive, tflite_flutter, exif, share_plus,
+  firebase_messaging, firebase_analytics, go_router, url_launcher,
+  cached_network_image, image_picker
+
+-----------------------------------
+Phase 2 — Engagement Expansion
+-----------------------------------
+Goal: Deepen engagement, add social features, grow daily active users.
+
+New Screens / Features:
+- Email Legislator     — One-click email templates with legislator mailto integration
+- Social Share mission — Native share sheet (share_plus) with pre-written civic messages
+- Town Hall GPS Check-in — Location-based check-in at public meetings
+- Micro-Lessons        — Short interactive civics lessons (Indiana government 101)
+- Matching Game        — Match lawmaker to district/committee/bill for XP
+
+New Badges in Phase 2:
+- Civic Regular (Level 10)
+- Civic Leader (Level 15)
+- Civic Champ (Level 20)
+- Week Warrior (7-day streak)
+- Town Hall Hero (3 Town Hall check-ins)
+
+Backend additions in Phase 2:
+- Town hall events data source (manual seed or API)
+- Lesson content storage in Supabase
+
+-----------------------------------
+Phase 3 — Community & Depth
+-----------------------------------
+Goal: Build community ownership, add harder missions, full educational suite.
+
+New Screens / Features:
+- Volunteer Task Check-in  — Local volunteer opportunity with self-report + photo proof
+- Neighborhood Challenge   — Micro-quests tied to local civic events
+- Fact Check Quiz          — Quiz about local policy myths and civic facts
+- Full Educational Suite   — Expanded micro-lesson library covering Indiana laws,
+                             state history, how a bill becomes law, voting rights
+
+New Badges in Phase 3:
+- Neighbor Know-It-All (3 Neighborhood Challenges)
+- Additional milestone badges TBD based on Phase 2 data
+
+Backend additions in Phase 3:
+- Volunteer opportunity data integration
+- Neighborhood challenge content management
+- Expanded quiz content pipeline
+
+-----------------------------------
+What Is Explicitly Out of Scope (All Phases)
+-----------------------------------
+- Real voter registration data lookup (privacy/legal risk)
+- Storing or verifying actual voting records
+- Partisan endorsements or candidate recommendations
+- National (non-Indiana) legislative tracking
+- User-to-user social features (comments, follows, feeds)
+- Monetization / ads in any phase

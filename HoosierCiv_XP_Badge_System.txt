@@ -1,0 +1,105 @@
+HoosierCiv XP & Badge System
+============================
+
+Single source of truth for all XP values, badge definitions, level progression,
+and streak rules. All other documents reference this file.
+
+-----------------------------------
+1. Mission XP Values
+-----------------------------------
+
+PHASE 1 (MVP)
+| Mission                          | Category    | Difficulty | XP   | Completion Type      |
+|----------------------------------|-------------|------------|------|----------------------|
+| Call a Legislator                | Legislative | Hard       | +20  | self_report          |
+| Check Voter Registration         | Voting      | Easy       | +10  | api_verified         |
+| Mini Voter Challenge (sticker)   | Voting      | Hard       | +25  | photo_upload         |
+| Tap a Bill News Article          | Legislative | Easy       | +5   | in_app_action        |
+| Read Full In-App Bill Summary    | Legislative | Easy       | +10  | in_app_action        |
+| Bill Quiz (correct answer)       | Legislative | Medium     | +15  | quiz                 |
+
+Note: "Tap article" (+5 XP) and "Read full in-app summary" (+10 XP) are separate actions.
+A user can earn both in sequence (max +15 XP per article). XP is granted once per
+article per action type per user.
+
+PHASE 2
+| Mission                          | Category    | Difficulty | XP   | Completion Type      |
+|----------------------------------|-------------|------------|------|----------------------|
+| Email a Legislator               | Legislative | Medium     | +15  | self_report          |
+| Social Share (native share sheet)| Legislative | Easy       | +10  | self_report          |
+| Set Voting Reminders             | Voting      | Easy       | +5   | self_report          |
+| Attend Town Hall                 | Community   | Hard       | +25  | gps_checkin          |
+| Micro-Lessons                    | Education   | Easy       | +10  | quiz                 |
+| Matching Game                    | Education   | Easy       | +10  | quiz                 |
+
+PHASE 3
+| Mission                          | Category    | Difficulty | XP   | Completion Type      |
+|----------------------------------|-------------|------------|------|----------------------|
+| Volunteer Task                   | Community   | Hard       | +30  | self_report          |
+| Neighborhood Challenge           | Community   | Hard       | +25  | self_report          |
+| Fact Check Quiz                  | Education   | Medium     | +15  | quiz                 |
+
+-----------------------------------
+2. Level Progression
+-----------------------------------
+- Formula: 100 XP per level
+- Max level: 20 (2,000 XP total to reach max level)
+- Each level-up unlocks a cosmetic reward (e.g., new Indy mascot outfit, badge frame, home
+  screen theme color)
+- Level is displayed on Profile screen and Home screen header
+
+Level milestones:
+- Level 1:  0 XP      (starting level)
+- Level 5:  400 XP    (unlock: "Civic Rookie" badge)
+- Level 10: 900 XP    (unlock: "Civic Regular" badge)
+- Level 15: 1,400 XP  (unlock: "Civic Leader" badge)
+- Level 20: 1,900 XP  (unlock: "Civic Champ" badge — max level)
+
+-----------------------------------
+3. Streak Rules
+-----------------------------------
+- Requirement: Complete at least 1 mission (any category, any phase) per calendar day.
+- Calendar day: defined by local device timezone, resets at midnight.
+- Streak counter increments at the first mission completion of each day.
+- Streak is broken if no mission is completed before midnight local time.
+- Streak is stored on device (hive) and synced to Supabase on next app open.
+- Streak milestones that award badges:
+  - 3-day streak  → "3-Day Streak" badge
+  - 7-day streak  → "Week Warrior" badge (Phase 2 badge, shown but not awarded in MVP)
+
+-----------------------------------
+4. Badge Definitions
+-----------------------------------
+All badge names are canonical. Use exactly these names in code, database, and UI copy.
+
+| Badge Name         | Trigger                                                       | Phase |
+|--------------------|---------------------------------------------------------------|-------|
+| First Call         | Complete the "Call a Legislator" mission for the first time   | P1    |
+| Voter Verified     | Successfully complete the voter sticker photo verification    | P1    |
+| Informed Advocate  | Complete a Bill Quiz after tapping at least one news article  | P1    |
+| 3-Day Streak       | Maintain a streak of 3 consecutive calendar days              | P1    |
+| Civic Rookie       | Reach Level 5                                                 | P1    |
+| Civic Regular      | Reach Level 10                                                | P2    |
+| Civic Leader       | Reach Level 15                                                | P2    |
+| Civic Champ        | Reach Level 20 (max level)                                    | P2    |
+| Week Warrior       | Maintain a streak of 7 consecutive calendar days              | P2    |
+| Town Hall Hero     | Complete 3 Attend Town Hall missions                          | P2    |
+| Neighbor Know-It-All| Complete 3 Neighborhood Challenge missions                   | P3    |
+
+Badge properties:
+- Badges are earned permanently; they cannot be revoked.
+- Badges are displayed on Profile > Badges screen in the order they were earned.
+- Phase 2 and Phase 3 badge slots are visible in MVP (grayed out) to motivate users.
+- Each badge has: id, name, description, icon_asset, phase, earned_at (nullable until earned).
+
+-----------------------------------
+5. Gamification Copy (Indy the Cardinal)
+-----------------------------------
+Mission completion messages (examples):
+- Call a Legislator:   "Tweet tweet! You made your voice heard in Indianapolis — that's
+                        what Hoosier democracy sounds like!"
+- Voter Verified:      "You VOTED! Indy is doing a victory flap right now. Indiana is lucky
+                        to have you!"
+- Bill Quiz correct:   "Sharp as a cardinal's beak! You just leveled up your civic IQ."
+- 3-Day Streak:        "Three days strong! Indy is perched right on your shoulder cheering
+                        you on. Keep it up, Hoosier!"
