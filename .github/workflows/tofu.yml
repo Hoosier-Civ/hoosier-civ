@@ -39,6 +39,7 @@ jobs:
         working-directory: infra/environments/${{ matrix.environment }}
         run: tofu plan -no-color
         env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
           TF_VAR_supabase_access_token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           TF_VAR_supabase_organization_id: ${{ secrets.SUPABASE_ORGANIZATION_ID }}
           TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DB_PASSWORD }}
