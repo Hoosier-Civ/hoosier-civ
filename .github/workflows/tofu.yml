@@ -1,0 +1,46 @@
+name: OpenTofu Plan
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+
+jobs:
+  plan:
+    name: Plan (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    strategy:
+      matrix:
+        environment: [dev, prod]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.6.x"
+
+      - name: Init
+        working-directory: infra/environments/${{ matrix.environment }}
+        run: tofu init
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
+
+      - name: Format check
+        working-directory: infra
+        run: tofu fmt -check -recursive
+
+      - name: Validate
+        working-directory: infra/environments/${{ matrix.environment }}
+        run: tofu validate
+
+      - name: Plan
+        working-directory: infra/environments/${{ matrix.environment }}
+        run: tofu plan -no-color
+        env:
+          TF_VAR_supabase_access_token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          TF_VAR_supabase_organization_id: ${{ secrets.SUPABASE_ORGANIZATION_ID }}
+          TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          TF_VAR_google_project_id: ${{ secrets.GOOGLE_PROJECT_ID }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
