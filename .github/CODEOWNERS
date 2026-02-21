@@ -1,0 +1,8 @@
+# Default: all PRs require maintainer review
+*                         @hoosierciv/maintainers
+
+# Infrastructure, CI/CD, and database — maintainers only
+infra/                    @hoosierciv/maintainers
+supabase/                 @hoosierciv/maintainers
+.github/                  @hoosierciv/maintainers
+Makefile                  @hoosierciv/maintainers
