@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    supabase = {
+      source  = "supabase/supabase"
+      version = "~> 1.0"
+    }
+  }
+}
+
 resource "supabase_project" "main" {
   organization_id   = var.organization_id
   name              = "hoosierciv-${var.environment}"
