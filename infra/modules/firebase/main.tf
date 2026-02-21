@@ -16,13 +16,6 @@ resource "google_firebase_project" "main" {
   project  = var.project_id
 }
 
-resource "google_firebase_project_location" "main" {
-  provider    = google-beta
-  project     = var.project_id
-  location_id = var.region
-  depends_on  = [google_firebase_project.main]
-}
-
 resource "google_firebase_android_app" "main" {
   provider     = google-beta
   project      = var.project_id
