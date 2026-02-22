@@ -45,6 +45,7 @@ Indiana residents aged 18–45 who are civically curious but not yet civically a
 
 | Document | Description |
 |---|---|
+| [`supabase/functions/README.md`](supabase/functions/README.md) | Edge Functions overview, local dev quickstart, and deployment |
 | [`HoosierCiv_Flutter_MVP_Architecture.txt`](HoosierCiv_Flutter_MVP_Architecture.txt) | Folder structure, data models, services, packages, gamification engine |
 | [`HoosierCiv_XP_Badge_System.txt`](HoosierCiv_XP_Badge_System.txt) | All XP values, badge definitions, level formula, streak rules |
 | [`HoosierCiv_Technical_Decisions.txt`](HoosierCiv_Technical_Decisions.txt) | Auth, APIs, ML, caching, privacy — every implementation decision |

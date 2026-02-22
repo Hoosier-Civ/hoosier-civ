@@ -2,8 +2,8 @@ name: Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       environment:
@@ -16,10 +16,28 @@ on:
           - prod
 
 jobs:
-  deploy-infra:
-    name: Apply Infrastructure (${{ github.event.inputs.environment || 'prod' }})
+  setup:
+    name: Resolve environment
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'prod' }}
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      - name: Resolve target environment
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif echo "${{ github.ref }}" | grep -q '^refs/tags/v'; then
+            echo "environment=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-infra:
+    name: Apply Infrastructure (${{ needs.setup.outputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    needs: [setup]
 
     steps:
       - uses: actions/checkout@v4
@@ -29,13 +47,13 @@ jobs:
           tofu_version: "1.6.x"
 
       - name: Init
-        working-directory: infra/environments/${{ github.event.inputs.environment || 'prod' }}
+        working-directory: infra/environments/${{ needs.setup.outputs.environment }}
         run: tofu init
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
 
       - name: Apply
-        working-directory: infra/environments/${{ github.event.inputs.environment || 'prod' }}
+        working-directory: infra/environments/${{ needs.setup.outputs.environment }}
         run: tofu apply -auto-approve
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
@@ -46,10 +64,10 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
   deploy-database:
-    name: Push Migrations & Deploy Functions (${{ github.event.inputs.environment || 'prod' }})
+    name: Push Migrations & Deploy Functions (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'prod' }}
-    needs: deploy-infra
+    environment: ${{ needs.setup.outputs.environment }}
+    needs: [setup, deploy-infra]
 
     steps:
       - uses: actions/checkout@v4

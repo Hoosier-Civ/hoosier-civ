@@ -45,3 +45,12 @@ app.*.map.json
 # Flutter generated
 *.g.dart
 .env
+env.*.json
+!env.example.json
+
+# Firebase config — never commit real credentials
+google-services.json
+GoogleService-Info.plist
+# Allow example stubs
+!google-services.json.example
+!GoogleService-Info.plist.example

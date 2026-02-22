@@ -10,7 +10,11 @@ const String _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Firebase not configured yet — google-services.json added in a later step.
+  }
   await Supabase.initialize(
     url: _supabaseUrl,
     anonKey: _supabaseAnonKey,
