@@ -21,6 +21,7 @@ Thanks for helping build civic infrastructure for Indiana. This guide covers eve
   - [Running the App](#running-the-app)
   - [What Requires Real Credentials](#what-requires-real-credentials)
   - [Code Style](#code-style)
+  - [Branching Convention](#branching-convention)
   - [Submitting a PR](#submitting-a-pr)
 
 ---
@@ -216,11 +217,36 @@ Most contributors only need the Supabase local stack and optionally an Anthropic
 
 ---
 
+## Branching Convention
+
+Branch names are validated automatically on PR open. Branches that don't follow the pattern will fail the check.
+
+| Type | Pattern | When to use |
+|---|---|---|
+| Feature | `feat/issue-{number}-{short-description}` | New functionality tied to a GitHub issue |
+| Bug fix | `fix/issue-{number}-{short-description}` | Bug fix tied to a GitHub issue |
+| Chore | `chore/{short-description}` | Deps, config, tooling — no issue required |
+| Docs | `docs/{short-description}` | Documentation only — no issue required |
+
+**Examples:**
+
+```bash
+git checkout -b feat/issue-2-profiles-table
+git checkout -b feat/issue-6-interest-select-screen
+git checkout -b fix/issue-9-router-redirect-loop
+git checkout -b chore/upgrade-flutter-dependencies
+```
+
+The issue number in the branch name is what drives Kanban automation — when you push a branch, the linked issue automatically moves to **In Progress** on the project board.
+
+---
+
 ## Submitting a PR
 
-1. Fork the repo and create a feature branch: `git checkout -b feat/your-feature`
-2. Make your changes, run `flutter analyze` and `dart format .`
-3. Open a pull request against `main` with a clear description of what changed and why
-4. Link any related issues
+1. Pick an issue from the [project board](https://github.com/orgs/Hoosier-Civ/projects/1) and self-assign it
+2. Create a branch following the [naming convention](#branching-convention): `git checkout -b feat/issue-{number}-{description}`
+3. Make your changes, run `flutter analyze` and `dart format .`
+4. Open a pull request against `main` — the issue will move to **In Review** automatically
+5. Once merged, the issue closes and moves to **Done** automatically
 
 Please do not commit `env.dev.json`, `google-services.json`, `GoogleService-Info.plist`, or any file containing real API keys.

@@ -1,0 +1,97 @@
+name: Kanban — Branch → In Progress
+
+on:
+  push:
+    branches:
+      - 'feat/issue-*'
+      - 'fix/issue-*'
+
+jobs:
+  move-to-in-progress:
+    name: Move linked issue to In Progress
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Extract issue number from branch
+        id: extract
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          ISSUE_NUMBER=$(echo "$BRANCH" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "No issue number found in branch name — skipping"
+            exit 0
+          fi
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Auto-assign issue to pusher
+        if: steps.extract.outputs.issue_number != ''
+        run: |
+          gh issue edit ${{ steps.extract.outputs.issue_number }} \
+            --repo ${{ github.repository }} \
+            --add-assignee ${{ github.actor }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move issue to In Progress on project board
+        if: steps.extract.outputs.issue_number != ''
+        run: |
+          ISSUE_NUMBER=${{ steps.extract.outputs.issue_number }}
+          REPO=${{ github.repository }}
+          PROJECT_NUMBER=1
+          ORG=$(echo "$REPO" | cut -d/ -f1)
+          IN_PROGRESS_OPTION_ID="34a05921"
+
+          # Get the project item ID for this issue
+          ITEM_ID=$(gh api graphql -f query="
+            query {
+              organization(login: \"$ORG\") {
+                projectV2(number: $PROJECT_NUMBER) {
+                  items(first: 100) {
+                    nodes {
+                      id
+                      content {
+                        ... on Issue { number }
+                      }
+                    }
+                  }
+                }
+              }
+            }" --jq ".data.organization.projectV2.items.nodes[] | select(.content.number == $ISSUE_NUMBER) | .id")
+
+          if [ -z "$ITEM_ID" ]; then
+            echo "Issue #$ISSUE_NUMBER not found in project — skipping"
+            exit 0
+          fi
+
+          # Get the Status field ID
+          FIELD_ID=$(gh api graphql -f query="
+            query {
+              organization(login: \"$ORG\") {
+                projectV2(number: $PROJECT_NUMBER) {
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2SingleSelectField { id name }
+                    }
+                  }
+                }
+              }
+            }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
+
+          # Update the item status
+          gh api graphql -f query="
+            mutation {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: \"PVT_kwDODryfUM4BP3nZ\"
+                itemId: \"$ITEM_ID\"
+                fieldId: \"$FIELD_ID\"
+                value: { singleSelectOptionId: \"$IN_PROGRESS_OPTION_ID\" }
+              }) {
+                projectV2Item { id }
+              }
+            }"
+
+          echo "Moved issue #$ISSUE_NUMBER to In Progress"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
