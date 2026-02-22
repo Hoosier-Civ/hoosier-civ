@@ -76,7 +76,7 @@ jobs:
           # Get the parent's project item ID
           PARENT_ITEM_ID=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   items(first: 100) {
                     nodes {
@@ -88,7 +88,7 @@ jobs:
                   }
                 }
               }
-            }" --jq ".data.repository.projectV2.items.nodes[] | select(.content.number == $PARENT_NUMBER) | .id")
+            }" --jq ".data.organization.projectV2.items.nodes[] | select(.content.number == $PARENT_NUMBER) | .id")
 
           if [ -z "$PARENT_ITEM_ID" ]; then
             echo "Parent #$PARENT_NUMBER not found in project — issue closed but board not updated"
@@ -98,7 +98,7 @@ jobs:
           # Get the Status field ID
           FIELD_ID=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   fields(first: 20) {
                     nodes {
@@ -107,7 +107,7 @@ jobs:
                   }
                 }
               }
-            }" --jq '.data.repository.projectV2.fields.nodes[] | select(.name == "Status") | .id')
+            }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
 
           gh api graphql -f query="
             mutation {

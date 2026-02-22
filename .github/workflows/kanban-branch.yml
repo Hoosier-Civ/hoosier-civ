@@ -48,7 +48,7 @@ jobs:
           # Get the project item ID for this issue
           ITEM_ID=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   items(first: 100) {
                     nodes {
@@ -60,7 +60,7 @@ jobs:
                   }
                 }
               }
-            }" --jq ".data.repository.projectV2.items.nodes[] | select(.content.number == $ISSUE_NUMBER) | .id")
+            }" --jq ".data.organization.projectV2.items.nodes[] | select(.content.number == $ISSUE_NUMBER) | .id")
 
           if [ -z "$ITEM_ID" ]; then
             echo "Issue #$ISSUE_NUMBER not found in project — skipping"
@@ -70,7 +70,7 @@ jobs:
           # Get the Status field ID
           FIELD_ID=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   fields(first: 20) {
                     nodes {
@@ -79,7 +79,7 @@ jobs:
                   }
                 }
               }
-            }" --jq '.data.repository.projectV2.fields.nodes[] | select(.name == "Status") | .id')
+            }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
 
           # Update the item status
           gh api graphql -f query="
@@ -128,7 +128,7 @@ jobs:
           # Get the parent's project item ID
           PARENT_ITEM_ID=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   items(first: 100) {
                     nodes {
@@ -140,7 +140,7 @@ jobs:
                   }
                 }
               }
-            }" --jq ".data.repository.projectV2.items.nodes[] | select(.content.number == $PARENT_NUMBER) | .id")
+            }" --jq ".data.organization.projectV2.items.nodes[] | select(.content.number == $PARENT_NUMBER) | .id")
 
           if [ -z "$PARENT_ITEM_ID" ]; then
             echo "Parent issue #$PARENT_NUMBER not found in project — skipping"
@@ -150,7 +150,7 @@ jobs:
           # Get the Status field ID
           FIELD_ID=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   fields(first: 20) {
                     nodes {
@@ -159,12 +159,12 @@ jobs:
                   }
                 }
               }
-            }" --jq '.data.repository.projectV2.fields.nodes[] | select(.name == "Status") | .id')
+            }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
 
           # Move parent to In Progress only if it is currently in Todo
           CURRENT_STATUS=$(gh api graphql -f query="
             query {
-              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
+              organization(login: \"$ORG\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   items(first: 100) {
                     nodes {
@@ -181,7 +181,7 @@ jobs:
                   }
                 }
               }
-            }" --jq ".data.repository.projectV2.items.nodes[] | select(.id == \"$PARENT_ITEM_ID\") | .fieldValues.nodes[] | select(.field.name == \"Status\") | .name // empty")
+            }" --jq ".data.organization.projectV2.items.nodes[] | select(.id == \"$PARENT_ITEM_ID\") | .fieldValues.nodes[] | select(.field.name == \"Status\") | .name // empty")
 
           if [ "$CURRENT_STATUS" = "Done" ] || [ "$CURRENT_STATUS" = "In Progress" ]; then
             echo "Parent #$PARENT_NUMBER is already '$CURRENT_STATUS' — skipping"
