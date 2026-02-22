@@ -40,7 +40,6 @@ jobs:
           ISSUE_NUMBER=${{ steps.extract.outputs.issue_number }}
           REPO=${{ github.repository }}
           ORG=$(echo "$REPO" | cut -d/ -f1)
-          REPO_NAME=$(echo "$REPO" | cut -d/ -f2)
           PROJECT_NUMBER=1
           TARGET_OPTION="${{ steps.extract.outputs.target_option }}"
           TARGET_NAME="${{ steps.extract.outputs.target_name }}"
