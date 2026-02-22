@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      repository-projects: write
 
     steps:
       - name: Find parent issue
@@ -37,7 +38,7 @@ jobs:
           echo "parent_number=$PARENT_NUMBER" >> "$GITHUB_OUTPUT"
           echo "Found parent feature: #$PARENT_NUMBER"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Check if all sibling tasks are closed
         id: check
@@ -46,14 +47,13 @@ jobs:
           PARENT_NUMBER=${{ steps.parent.outputs.parent_number }}
           REPO=${{ github.repository }}
 
-          # Get all sub-issues of the parent and check their states
           OPEN_COUNT=$(gh api repos/$REPO/issues/$PARENT_NUMBER/sub_issues \
             --jq '[.[] | select(.state == "open")] | length')
 
           echo "Open tasks remaining: $OPEN_COUNT"
           echo "open_count=$OPEN_COUNT" >> "$GITHUB_OUTPUT"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Close parent and move to Done
         if: steps.parent.outputs.parent_number != '' && steps.check.outputs.open_count == '0'
@@ -61,12 +61,12 @@ jobs:
           PARENT_NUMBER=${{ steps.parent.outputs.parent_number }}
           REPO=${{ github.repository }}
           ORG=$(echo "$REPO" | cut -d/ -f1)
+          REPO_NAME=$(echo "$REPO" | cut -d/ -f2)
           PROJECT_NUMBER=1
           DONE_OPTION_ID="f60039e8"
 
           echo "All tasks complete — closing feature #$PARENT_NUMBER"
 
-          # Close the parent issue with a comment
           gh issue comment $PARENT_NUMBER \
             --repo $REPO \
             --body "All tasks for this feature have been completed. Closing automatically."
@@ -109,7 +109,6 @@ jobs:
               }
             }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
 
-          # Move parent to Done on the board
           gh api graphql -f query="
             mutation {
               updateProjectV2ItemFieldValue(input: {
@@ -124,4 +123,4 @@ jobs:
 
           echo "Feature #$PARENT_NUMBER closed and moved to Done"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}

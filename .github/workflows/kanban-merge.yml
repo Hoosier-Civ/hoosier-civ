@@ -12,6 +12,7 @@ jobs:
     if: github.event.pull_request.merged == true
     permissions:
       issues: write
+      repository-projects: write
 
     steps:
       - name: Extract issue number from branch
@@ -32,7 +33,7 @@ jobs:
             --repo ${{ github.repository }} \
             --comment "Closed automatically — merged in #${{ github.event.pull_request.number }}."
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Move issue to Done on project board
         if: steps.extract.outputs.issue_number != ''
@@ -91,4 +92,4 @@ jobs:
 
           echo "Moved issue #$ISSUE_NUMBER to Done"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}

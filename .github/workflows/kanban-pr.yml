@@ -11,6 +11,7 @@ jobs:
     permissions:
       issues: write
       pull-requests: read
+      repository-projects: write
 
     steps:
       - name: Extract issue number from branch
@@ -26,7 +27,7 @@ jobs:
 
           # Determine target status
           if [ "${{ github.event.action }}" = "converted_to_draft" ]; then
-            echo "target_option=47fc9ee4" >> "$GITHUB_OUTPUT"  # In Progress (original id preserved)
+            echo "target_option=34a05921" >> "$GITHUB_OUTPUT"  # In Progress
             echo "target_name=In Progress" >> "$GITHUB_OUTPUT"
           else
             echo "target_option=10ca0b0e" >> "$GITHUB_OUTPUT"  # In Review
@@ -38,8 +39,8 @@ jobs:
         run: |
           ISSUE_NUMBER=${{ steps.extract.outputs.issue_number }}
           REPO=${{ github.repository }}
-          PROJECT_NUMBER=1
           ORG=$(echo "$REPO" | cut -d/ -f1)
+          PROJECT_NUMBER=1
           TARGET_OPTION="${{ steps.extract.outputs.target_option }}"
           TARGET_NAME="${{ steps.extract.outputs.target_name }}"
 
@@ -94,4 +95,4 @@ jobs:
 
           echo "Moved issue #$ISSUE_NUMBER to $TARGET_NAME"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
