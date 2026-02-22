@@ -96,4 +96,4 @@ jobs:
 
           echo "Moved issue #$ISSUE_NUMBER to $TARGET_NAME"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}

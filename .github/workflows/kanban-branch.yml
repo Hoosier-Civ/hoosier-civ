@@ -33,7 +33,7 @@ jobs:
             --repo ${{ github.repository }} \
             --add-assignee ${{ github.actor }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Move issue to In Progress on project board
         if: steps.extract.outputs.issue_number != ''
@@ -96,7 +96,7 @@ jobs:
 
           echo "Moved issue #$ISSUE_NUMBER to In Progress"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Move parent feature issue to In Progress
         if: steps.extract.outputs.issue_number != ''
@@ -202,4 +202,4 @@ jobs:
 
           echo "Moved parent feature #$PARENT_NUMBER to In Progress"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}

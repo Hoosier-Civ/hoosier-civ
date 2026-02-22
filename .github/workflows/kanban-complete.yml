@@ -38,7 +38,7 @@ jobs:
           echo "parent_number=$PARENT_NUMBER" >> "$GITHUB_OUTPUT"
           echo "Found parent feature: #$PARENT_NUMBER"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Check if all sibling tasks are closed
         id: check
@@ -53,7 +53,7 @@ jobs:
           echo "Open tasks remaining: $OPEN_COUNT"
           echo "open_count=$OPEN_COUNT" >> "$GITHUB_OUTPUT"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
 
       - name: Close parent and move to Done
         if: steps.parent.outputs.parent_number != '' && steps.check.outputs.open_count == '0'
@@ -123,4 +123,4 @@ jobs:
 
           echo "Feature #$PARENT_NUMBER closed and moved to Done"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
