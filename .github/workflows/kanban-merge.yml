@@ -12,6 +12,7 @@ jobs:
     if: github.event.pull_request.merged == true
     permissions:
       issues: write
+      projects: write
 
     steps:
       - name: Extract issue number from branch
@@ -40,13 +41,14 @@ jobs:
           ISSUE_NUMBER=${{ steps.extract.outputs.issue_number }}
           REPO=${{ github.repository }}
           ORG=$(echo "$REPO" | cut -d/ -f1)
+          REPO_NAME=$(echo "$REPO" | cut -d/ -f2)
           PROJECT_NUMBER=1
           DONE_OPTION_ID="f60039e8"
 
           # Get the project item ID for this issue
           ITEM_ID=$(gh api graphql -f query="
             query {
-              organization(login: \"$ORG\") {
+              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   items(first: 100) {
                     nodes {
@@ -56,7 +58,7 @@ jobs:
                   }
                 }
               }
-            }" --jq ".data.organization.projectV2.items.nodes[] | select(.content.number == $ISSUE_NUMBER) | .id")
+            }" --jq ".data.repository.projectV2.items.nodes[] | select(.content.number == $ISSUE_NUMBER) | .id")
 
           if [ -z "$ITEM_ID" ]; then
             echo "Issue #$ISSUE_NUMBER not found in project — skipping board update"
@@ -66,7 +68,7 @@ jobs:
           # Get the Status field ID
           FIELD_ID=$(gh api graphql -f query="
             query {
-              organization(login: \"$ORG\") {
+              repository(owner: \"$ORG\", name: \"$REPO_NAME\") {
                 projectV2(number: $PROJECT_NUMBER) {
                   fields(first: 20) {
                     nodes {
@@ -75,7 +77,7 @@ jobs:
                   }
                 }
               }
-            }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
+            }" --jq '.data.repository.projectV2.fields.nodes[] | select(.name == "Status") | .id')
 
           gh api graphql -f query="
             mutation {
