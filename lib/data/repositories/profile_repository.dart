@@ -22,9 +22,15 @@ class ProfileRepository {
   }
 
   Future<ProfileModel> upsertProfile(ProfileModel profile) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('Cannot update profile without an authenticated user.');
+    }
+
     final data = await _supabase
         .from('profiles')
-        .upsert(profile.toJson())
+        .update(profile.toJson())
+        .eq('id', userId)
         .select()
         .single();
 
