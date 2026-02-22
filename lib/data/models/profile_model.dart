@@ -1,3 +1,9 @@
+class _Sentinel {
+  const _Sentinel();
+}
+
+const _sentinel = _Sentinel();
+
 class ProfileModel {
   final String id;
   final String? displayName;
@@ -64,25 +70,31 @@ class ProfileModel {
   }
 
   ProfileModel copyWith({
-    String? displayName,
+    Object? displayName = _sentinel,
     int? xpTotal,
     int? level,
     int? streakCount,
-    DateTime? lastMissionAt,
-    String? zipCode,
-    String? districtId,
+    Object? lastMissionAt = _sentinel,
+    Object? zipCode = _sentinel,
+    Object? districtId = _sentinel,
     List<String>? interests,
     bool? onboardingCompleted,
   }) {
     return ProfileModel(
       id: id,
-      displayName: displayName ?? this.displayName,
+      displayName: identical(displayName, _sentinel)
+          ? this.displayName
+          : displayName as String?,
       xpTotal: xpTotal ?? this.xpTotal,
       level: level ?? this.level,
       streakCount: streakCount ?? this.streakCount,
-      lastMissionAt: lastMissionAt ?? this.lastMissionAt,
-      zipCode: zipCode ?? this.zipCode,
-      districtId: districtId ?? this.districtId,
+      lastMissionAt: identical(lastMissionAt, _sentinel)
+          ? this.lastMissionAt
+          : lastMissionAt as DateTime?,
+      zipCode: identical(zipCode, _sentinel) ? this.zipCode : zipCode as String?,
+      districtId: identical(districtId, _sentinel)
+          ? this.districtId
+          : districtId as String?,
       interests: interests ?? this.interests,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       createdAt: createdAt,

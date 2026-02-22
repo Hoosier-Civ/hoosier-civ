@@ -143,6 +143,34 @@ void main() {
       expect(updated.updatedAt, base.updatedAt);
     });
 
+    test('explicitly clears displayName to null', () {
+      final updated = base.copyWith(displayName: null);
+      expect(updated.displayName, isNull);
+    });
+
+    test('explicitly clears lastMissionAt to null', () {
+      final updated = base.copyWith(lastMissionAt: null);
+      expect(updated.lastMissionAt, isNull);
+    });
+
+    test('explicitly clears zipCode to null', () {
+      final updated = base.copyWith(zipCode: null);
+      expect(updated.zipCode, isNull);
+    });
+
+    test('explicitly clears districtId to null', () {
+      final updated = base.copyWith(districtId: null);
+      expect(updated.districtId, isNull);
+    });
+
+    test('omitting nullable fields does not clear them', () {
+      final updated = base.copyWith(xpTotal: 200);
+      expect(updated.displayName, base.displayName);
+      expect(updated.lastMissionAt, base.lastMissionAt);
+      expect(updated.zipCode, base.zipCode);
+      expect(updated.districtId, base.districtId);
+    });
+
     test('does not modify the original', () {
       base.copyWith(xpTotal: 999);
       expect(base.xpTotal, 150);
