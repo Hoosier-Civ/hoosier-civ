@@ -11,7 +11,7 @@ jobs:
     permissions:
       issues: write
       pull-requests: read
-      projects: write
+      repository-projects: write
 
     steps:
       - name: Extract issue number from branch
