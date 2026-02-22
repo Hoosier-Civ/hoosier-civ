@@ -147,5 +147,28 @@ void main() {
       base.copyWith(xpTotal: 999);
       expect(base.xpTotal, 150);
     });
+
+    test('can explicitly clear nullable fields to null', () {
+      final cleared = base.copyWith(
+        displayName: null,
+        lastMissionAt: null,
+        zipCode: null,
+        districtId: null,
+      );
+
+      expect(cleared.displayName, isNull);
+      expect(cleared.lastMissionAt, isNull);
+      expect(cleared.zipCode, isNull);
+      expect(cleared.districtId, isNull);
+    });
+
+    test('keeps nullable fields when not provided', () {
+      final unchanged = base.copyWith(xpTotal: 200);
+
+      expect(unchanged.displayName, base.displayName);
+      expect(unchanged.lastMissionAt, base.lastMissionAt);
+      expect(unchanged.zipCode, base.zipCode);
+      expect(unchanged.districtId, base.districtId);
+    });
   });
 }
