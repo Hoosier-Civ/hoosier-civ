@@ -93,6 +93,8 @@ jobs:
             }"
 
           echo "Moved issue #$ISSUE_NUMBER to In Progress"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Move parent feature issue to In Progress
         if: steps.extract.outputs.issue_number != ''
