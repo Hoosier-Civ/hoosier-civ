@@ -1,0 +1,94 @@
+name: Kanban — PR Merged → Close Task & Move to Done
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  close-and-complete:
+    name: Close linked issue and move to Done
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    permissions:
+      issues: write
+
+    steps:
+      - name: Extract issue number from branch
+        id: extract
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          ISSUE_NUMBER=$(echo "$BRANCH" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "No issue number found in branch '$BRANCH' — skipping"
+            exit 0
+          fi
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Close the issue
+        if: steps.extract.outputs.issue_number != ''
+        run: |
+          gh issue close ${{ steps.extract.outputs.issue_number }} \
+            --repo ${{ github.repository }} \
+            --comment "Closed automatically — merged in #${{ github.event.pull_request.number }}."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move issue to Done on project board
+        if: steps.extract.outputs.issue_number != ''
+        run: |
+          ISSUE_NUMBER=${{ steps.extract.outputs.issue_number }}
+          REPO=${{ github.repository }}
+          ORG=$(echo "$REPO" | cut -d/ -f1)
+          PROJECT_NUMBER=1
+          DONE_OPTION_ID="f60039e8"
+
+          # Get the project item ID for this issue
+          ITEM_ID=$(gh api graphql -f query="
+            query {
+              organization(login: \"$ORG\") {
+                projectV2(number: $PROJECT_NUMBER) {
+                  items(first: 100) {
+                    nodes {
+                      id
+                      content { ... on Issue { number } }
+                    }
+                  }
+                }
+              }
+            }" --jq ".data.organization.projectV2.items.nodes[] | select(.content.number == $ISSUE_NUMBER) | .id")
+
+          if [ -z "$ITEM_ID" ]; then
+            echo "Issue #$ISSUE_NUMBER not found in project — skipping board update"
+            exit 0
+          fi
+
+          # Get the Status field ID
+          FIELD_ID=$(gh api graphql -f query="
+            query {
+              organization(login: \"$ORG\") {
+                projectV2(number: $PROJECT_NUMBER) {
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2SingleSelectField { id name }
+                    }
+                  }
+                }
+              }
+            }" --jq '.data.organization.projectV2.fields.nodes[] | select(.name == "Status") | .id')
+
+          gh api graphql -f query="
+            mutation {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: \"PVT_kwDODryfUM4BP3nZ\"
+                itemId: \"$ITEM_ID\"
+                fieldId: \"$FIELD_ID\"
+                value: { singleSelectOptionId: \"$DONE_OPTION_ID\" }
+              }) {
+                projectV2Item { id }
+              }
+            }"
+
+          echo "Moved issue #$ISSUE_NUMBER to Done"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

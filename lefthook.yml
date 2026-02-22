@@ -1,0 +1,4 @@
+pre-push:
+  scripts:
+    "branch-name.sh":
+      runner: bash

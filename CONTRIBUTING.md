@@ -12,9 +12,10 @@ Thanks for helping build civic infrastructure for Indiana. This guide covers eve
   - [Project Overview](#project-overview)
   - [Environment Setup](#environment-setup)
     - [1. Clone the repo](#1-clone-the-repo)
-    - [2. Flutter dependencies](#2-flutter-dependencies)
-    - [3. Supabase (required)](#3-supabase-required)
-    - [4. Firebase (optional for most work)](#4-firebase-optional-for-most-work)
+    - [2. Install git hooks](#2-install-git-hooks)
+    - [3. Flutter dependencies](#3-flutter-dependencies)
+    - [4. Supabase (required)](#4-supabase-required)
+    - [5. Firebase (optional for most work)](#5-firebase-optional-for-most-work)
       - [Option A: No Firebase (recommended for most contributors)](#option-a-no-firebase-recommended-for-most-contributors)
       - [Option B: Personal Firebase project](#option-b-personal-firebase-project)
       - [Option C: Firebase emulator](#option-c-firebase-emulator)
@@ -32,6 +33,7 @@ Thanks for helping build civic infrastructure for Indiana. This guide covers eve
 |---|---|---|
 | Flutter | >=3.0.0 | [flutter.dev](https://docs.flutter.dev/get-started/install) |
 | Dart | >=3.0.0 | Bundled with Flutter |
+| Lefthook | latest | `brew install lefthook` |
 | Supabase CLI | latest | `brew install supabase/tap/supabase` |
 | Docker Desktop | latest | Required by Supabase local stack |
 | Node.js + npm | >=18 | Only needed if testing Firebase emulator |
@@ -61,13 +63,24 @@ git clone https://github.com/Hoosier-Civ/hoosier-civ.git
 cd hoosier-civ
 ```
 
-### 2. Flutter dependencies
+### 2. Install git hooks
+
+HoosierCiv uses [Lefthook](https://github.com/evilmartians/lefthook) to enforce the [branch naming convention](#branching-convention) locally before a push reaches GitHub.
+
+```bash
+brew install lefthook
+lefthook install
+```
+
+That's it — the `pre-push` hook is now active. If you try to push a branch with a non-conforming name you'll see exactly what's wrong and how to fix it before anything hits the remote.
+
+### 3. Flutter dependencies
 
 ```bash
 flutter pub get
 ```
 
-### 3. Supabase (required)
+### 4. Supabase (required)
 
 Supabase runs a full local stack (Postgres, Auth, Edge Functions, Studio UI) via Docker.
 
@@ -114,7 +127,7 @@ supabase functions serve --env-file .env.local
 
 See [`supabase/functions/README.md`](supabase/functions/README.md) for full Edge Functions docs.
 
-### 4. Firebase (optional for most work)
+### 5. Firebase (optional for most work)
 
 Firebase is used only for **push notifications** (FCM) and **Analytics**. The app starts and runs without Firebase configured — the init is wrapped in a try/catch that silently skips it in dev.
 
