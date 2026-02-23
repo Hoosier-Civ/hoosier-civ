@@ -75,3 +75,6 @@ supabase/.branches
 **/terraform.tfvars.json
 **/*.tfvars
 **/*.tfvars.json
+
+# Node
+**/node_modules
