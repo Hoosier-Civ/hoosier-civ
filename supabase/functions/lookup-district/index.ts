@@ -68,7 +68,11 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const cacheTtlDays = parseInt(Deno.env.get("DISTRICT_CACHE_TTL_DAYS") ?? "90", 10);
+  const rawCacheTtl = Deno.env.get("DISTRICT_CACHE_TTL_DAYS");
+  let cacheTtlDays = parseInt(rawCacheTtl ?? "", 10);
+  if (!Number.isFinite(cacheTtlDays) || cacheTtlDays <= 0) {
+    cacheTtlDays = 90;
+  }
 
   // --- Cache check ---
   const { data: cached, error: cacheError } = await supabase
