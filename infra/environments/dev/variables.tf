@@ -19,3 +19,10 @@ variable "google_project_id" {
   description = "Google Cloud project ID for Firebase"
   type        = string
 }
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key"
+  type        = string
+  sensitive   = true
+}
+
