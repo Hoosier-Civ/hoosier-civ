@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
 
   let civicData: Record<string, unknown>;
   try {
-    const civicRes = await fetch(url.toString());
+    const civicRes = await fetch(url.toString(), { signal: AbortSignal.timeout(10_000) });
     if (civicRes.status === 404) {
       return new Response(
         JSON.stringify({ error: "ZIP code not found — check that it is a valid US ZIP code" }),
@@ -108,6 +108,13 @@ Deno.serve(async (req) => {
     }
     civicData = await civicRes.json();
   } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      console.error("Google Civic API request timed out");
+      return new Response(JSON.stringify({ error: "Google Civic API request timed out" }), {
+        status: 504,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     console.error("Fetch error:", err);
     return new Response(JSON.stringify({ error: "Failed to reach Google Civic API" }), {
       status: 502,
