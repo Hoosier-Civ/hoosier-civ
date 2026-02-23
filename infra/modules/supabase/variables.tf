@@ -24,3 +24,4 @@ variable "site_url" {
   description = "Site URL for auth redirects"
   type        = string
 }
+
