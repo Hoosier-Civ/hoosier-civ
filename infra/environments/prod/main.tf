@@ -9,9 +9,9 @@ module "firebase" {
 module "supabase" {
   source = "../../modules/supabase"
 
-  organization_id         = var.supabase_organization_id
-  environment             = "prod"
-  database_password       = var.supabase_db_password
-  region                  = "us-east-1"
-  site_url                = "https://hoosierciv.com"
+  organization_id   = var.supabase_organization_id
+  environment       = "prod"
+  database_password = var.supabase_db_password
+  region            = "us-east-1"
+  site_url          = "https://hoosierciv.com"
 }
