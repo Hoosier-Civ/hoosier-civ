@@ -13,8 +13,26 @@ interface Representative {
 
 function determineChamber(officeName: string): string | null {
   const name = officeName.toLowerCase();
-  if (name.includes("u.s. representative") || name.includes("us representative")) return "us_house";
-  if (name.includes("u.s. senator") || name.includes("us senator")) return "us_senate";
+  if (
+    name.includes("u.s. representative") ||
+    name.includes("us representative") ||
+    name.includes("united states representative") ||
+    name.includes("u.s. house") ||
+    name.includes("us house") ||
+    name.includes("united states house")
+  ) {
+    return "us_house";
+  }
+  if (
+    name.includes("u.s. senator") ||
+    name.includes("us senator") ||
+    name.includes("united states senator") ||
+    name.includes("u.s. senate") ||
+    name.includes("us senate") ||
+    name.includes("united states senate")
+  ) {
+    return "us_senate";
+  }
   if (name.includes("state representative") || name.includes("state house")) return "house";
   if (name.includes("state senator") || name.includes("state senate")) return "senate";
   return null;
