@@ -90,6 +90,7 @@ jobs:
         run: |
           supabase functions deploy generate-bill-quiz
           supabase functions deploy aggregate-news
+          supabase functions deploy lookup-district
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 

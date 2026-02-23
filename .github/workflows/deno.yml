@@ -19,4 +19,4 @@ jobs:
 
       - name: Test
         working-directory: supabase/functions
-        run: deno test --allow-env **/*.test.ts
+        run: deno test --allow-env --no-lock **/*.test.ts

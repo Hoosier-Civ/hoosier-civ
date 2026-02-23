@@ -58,6 +58,7 @@ GoogleService-Info.plist
 # Supabase
 supabase/.temp
 supabase/.branches
+supabase/functions/deno.lock
 
 # Terraform / OpenTofu
 **/.terraform/
