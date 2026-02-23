@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
 
   let civicData: Record<string, unknown>;
   try {
-    const civicRes = await fetch(url.toString());
+    const civicRes = await fetch(url.toString(), { signal: AbortSignal.timeout(10_000) });
     if (civicRes.status === 404) {
       return new Response(
         JSON.stringify({ error: "ZIP code not found — check that it is a valid US ZIP code" }),
