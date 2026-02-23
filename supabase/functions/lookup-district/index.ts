@@ -53,12 +53,19 @@ Deno.serve(async (req) => {
   const cacheTtlDays = parseInt(Deno.env.get("DISTRICT_CACHE_TTL_DAYS") ?? "90", 10);
 
   // --- Cache check ---
-  const { data: cached } = await supabase
+  const { data: cached, error: cacheError } = await supabase
     .from("district_zip_cache")
     .select("district_id, representatives, cached_at")
     .eq("zip_code", zip_code)
     .maybeSingle();
 
+  if (cacheError) {
+    console.error("Error looking up district cache", cacheError);
+    return new Response(JSON.stringify({ error: "Failed to look up cached district data" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   if (cached) {
     const ageMs = Date.now() - new Date(cached.cached_at).getTime();
     const ageDays = ageMs / (1000 * 60 * 60 * 24);
