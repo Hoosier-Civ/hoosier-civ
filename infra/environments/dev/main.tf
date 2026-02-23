@@ -14,6 +14,4 @@ module "supabase" {
   database_password       = var.supabase_db_password
   region                  = "us-east-1"
   site_url                = "http://localhost:3000"
-  civic_api_key           = module.firebase.civic_api_key
-  district_cache_ttl_days = 90
 }
