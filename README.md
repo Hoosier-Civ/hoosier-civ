@@ -19,7 +19,7 @@ Indiana residents aged 18–45 who are civically curious but not yet civically a
 | Mobile           | Flutter (iOS + Android)                         |
 | State management | flutter_bloc (Cubit)                            |
 | Backend          | Supabase (auth, PostgreSQL, Edge Functions)     |
-| Civic data       | Google Civic Info API, OpenStates API           |
+| Civic data       | Cicero API (officials), OpenStates API (bills)  |
 | News             | Google News RSS                                 |
 | AI (quizzes)     | Anthropic Claude API (Haiku)                    |
 | ML (on-device)   | tflite_flutter (voter sticker detection)        |
