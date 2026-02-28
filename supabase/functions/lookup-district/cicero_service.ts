@@ -46,7 +46,7 @@ export class CiceroService {
     }
 
     const data = await res.json() as CiceroResponse;
-    console.log(JSON.stringify(data, null, 2))
+
     const candidate: CiceroCandidate | undefined = data?.response?.results?.candidates?.[0];
 
     if (candidate?.match_region !== "IN") throw new CiceroError("ZIP code is not in Indiana", 422);

@@ -6,4 +6,8 @@ class GamificationState {
 
 class GamificationCubit extends Cubit<GamificationState> {
   GamificationCubit() : super(const GamificationState());
+
+  void awardXp(int xp) {
+    // TODO: implement XP accumulation
+  }
 }
