@@ -5,7 +5,11 @@ class AppConstants {
   static const String routeProfile = '/profile';
   static const String routeProfileBadges = '/profile/badges';
 
+  // OAuth
+  static const String oauthRedirectUrl = 'io.hoosierciv://login-callback';
+
   // XP values (mirrors HoosierCiv_XP_Badge_System.txt)
+  static const int xpOnboardingComplete = 5;
   static const int xpCallLegislator = 20;
   static const int xpVoterRegistration = 10;
   static const int xpVoterStickerPhoto = 25;
@@ -21,6 +25,9 @@ class AppConstants {
   static const String hiveBoxMissions = 'missions';
   static const String hiveBoxBills = 'bills';
   static const String hiveBoxUser = 'user';
+
+  // Hive keys
+  static const String hiveKeyOnboardingComplete = 'onboarding_complete';
 
   // Cache TTLs
   static const Duration missionsCacheTtl = Duration(minutes: 15);

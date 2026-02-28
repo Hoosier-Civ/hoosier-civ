@@ -91,7 +91,8 @@ class ProfileModel {
       lastMissionAt: identical(lastMissionAt, _sentinel)
           ? this.lastMissionAt
           : lastMissionAt as DateTime?,
-      zipCode: identical(zipCode, _sentinel) ? this.zipCode : zipCode as String?,
+      zipCode:
+          identical(zipCode, _sentinel) ? this.zipCode : zipCode as String?,
       districtId: identical(districtId, _sentinel)
           ? this.districtId
           : districtId as String?,

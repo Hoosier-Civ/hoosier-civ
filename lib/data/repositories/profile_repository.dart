@@ -29,8 +29,7 @@ class ProfileRepository {
 
     final data = await _supabase
         .from('profiles')
-        .update(profile.toJson())
-        .eq('id', userId)
+        .upsert(profile.toJson())
         .select()
         .single();
 
