@@ -27,7 +27,17 @@ class ProfileRepository {
       throw StateError('Cannot update profile without an authenticated user.');
     }
 
-    final payload = profile.toJson()..['id'] = userId;
+    // Send only mutable, non-gamification fields so that an upsert never
+    // clobbers immutable columns (created_at) or fields managed by other
+    // flows (xp_total, level, streak_count, last_mission_at).
+    final payload = <String, dynamic>{
+      'id': userId,
+      'display_name': profile.displayName,
+      'zip_code': profile.zipCode,
+      'district_id': profile.districtId,
+      'interests': profile.interests,
+      'onboarding_completed': profile.onboardingCompleted,
+    };
 
     final data = await _supabase
         .from('profiles')
