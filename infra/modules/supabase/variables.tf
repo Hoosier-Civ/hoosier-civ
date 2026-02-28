@@ -25,8 +25,8 @@ variable "site_url" {
   type        = string
 }
 
-variable "google_civic_api_key" {
-  description = "Google Civic Information API key for the lookup-district edge function"
+variable "cicero_api_key" {
+  description = "Cicero (Azavea) API key for the lookup-district edge function"
   type        = string
   sensitive   = true
 }

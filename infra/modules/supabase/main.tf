@@ -20,14 +20,14 @@ resource "supabase_project" "main" {
 
 resource "null_resource" "edge_function_secrets" {
   triggers = {
-    google_civic_api_key_hash = sha256(var.google_civic_api_key)
-    anthropic_api_key_hash    = sha256(var.anthropic_api_key)
+    cicero_api_key_hash    = sha256(var.cicero_api_key)
+    anthropic_api_key_hash = sha256(var.anthropic_api_key)
   }
 
   provisioner "local-exec" {
     command = <<EOT
       supabase secrets set \
-        GOOGLE_CIVIC_API_KEY=${var.google_civic_api_key} \
+        CICERO_API_KEY=${var.cicero_api_key} \
         ANTHROPIC_API_KEY=${var.anthropic_api_key} \
         DISTRICT_CACHE_TTL_DAYS=90 \
         --project-ref ${supabase_project.main.id}

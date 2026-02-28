@@ -5,39 +5,12 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environment to deploy"
-        required: true
-        default: "dev"
-        type: choice
-        options:
-          - dev
-          - prod
 
 jobs:
-  setup:
-    name: Resolve environment
-    runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.resolve.outputs.environment }}
-    steps:
-      - name: Resolve target environment
-        id: resolve
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
-          elif echo "${{ github.ref }}" | grep -q '^refs/tags/v'; then
-            echo "environment=prod" >> "$GITHUB_OUTPUT"
-          else
-            echo "environment=dev" >> "$GITHUB_OUTPUT"
-          fi
-
   deploy-infra:
-    name: Apply Infrastructure (${{ needs.setup.outputs.environment }})
+    name: Apply Infrastructure (prod)
     runs-on: ubuntu-latest
-    environment: ${{ needs.setup.outputs.environment }}
-    needs: [setup]
+    environment: prod
 
     steps:
       - uses: actions/checkout@v4
@@ -51,13 +24,13 @@ jobs:
           tofu_version: "1.6.x"
 
       - name: Init
-        working-directory: infra/environments/${{ needs.setup.outputs.environment }}
+        working-directory: infra/environments/prod
         run: tofu init
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
 
       - name: Apply
-        working-directory: infra/environments/${{ needs.setup.outputs.environment }}
+        working-directory: infra/environments/prod
         run: tofu apply -auto-approve
         env:
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_CLOUD_TOKEN }}
@@ -66,13 +39,14 @@ jobs:
           TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DB_PASSWORD }}
           TF_VAR_google_project_id: ${{ secrets.GOOGLE_PROJECT_ID }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_cicero_api_key: ${{ secrets.CICERO_API_KEY }}
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
   deploy-database:
-    name: Push Migrations & Deploy Functions (${{ needs.setup.outputs.environment }})
+    name: Push Migrations & Deploy Functions (prod)
     runs-on: ubuntu-latest
-    environment: ${{ needs.setup.outputs.environment }}
-    needs: [setup, deploy-infra]
+    environment: prod
+    needs: [deploy-infra]
 
     steps:
       - uses: actions/checkout@v4
@@ -98,4 +72,3 @@ jobs:
           supabase functions deploy lookup-district
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-

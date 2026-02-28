@@ -6,12 +6,12 @@
  *
  * The Supabase client is fully mocked via dependency injection so no real
  * HTTP traffic is made and no interval timers are started.
- * The Google Civic API is mocked via globalThis.fetch replacement.
+ * The Cicero API is mocked via globalThis.fetch replacement.
  */
 
 import { assertEquals } from "jsr:@std/assert";
 import { stub } from "jsr:@std/testing/mock";
-import { determineChamber, handler } from "./_handler.ts";
+import { districtTypeToChamber, handler } from "./_handler.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,42 +19,57 @@ import { determineChamber, handler } from "./_handler.ts";
 
 interface CacheRow {
   district_id: string;
-  representatives: unknown[];
   cached_at: string;
 }
 
 interface MockSupabaseOptions {
-  /** Row returned by the cache SELECT, or null for a miss. */
+  /** Row returned by the district_zip_cache SELECT, or null for a miss. */
   cacheRow?: CacheRow | null;
   /** Error object returned by the cache SELECT (simulates a DB error). */
   cacheError?: { message: string; code?: string } | null;
   /** Error returned by the upsert, or null for success. */
   upsertError?: { message: string } | null;
-  /** Spy called when upsert is invoked, receives the upserted data. */
-  onUpsert?: (data: Record<string, unknown>) => void;
+  /** Spy called when upsert is invoked, receives the table name and upserted data. */
+  onUpsert?: (table: string, data: Record<string, unknown>) => void;
+  /**
+   * Rows returned by the zip_cicero_officials join query on a cache hit.
+   * Each element should be shaped { cicero_officials: { district_type, district_ocd_id,
+   * first_name, last_name, addresses, email_addresses, party } }.
+   */
+  cachedOfficialRows?: Record<string, unknown>[];
 }
 
 /**
- * Builds a minimal mock of the Supabase client covering only the operations
- * that the handler uses:
- *   supabase.from(t).select(c).eq(k,v).maybeSingle()  → cache read
- *   supabase.from(t).upsert(data)                      → cache write
+ * Builds a mock of the Supabase client that covers:
+ *   district_zip_cache  → .select().eq().maybeSingle()  (cache read)
+ *   zip_cicero_officials → .select().eq()               (join read on cache hit)
+ *   any table           → .upsert(data)                  (cache / officials write)
  */
 function makeSupabaseMock(opts: MockSupabaseOptions = {}) {
-  const { cacheRow = null, cacheError = null, upsertError = null, onUpsert } = opts;
+  const {
+    cacheRow = null,
+    cacheError = null,
+    upsertError = null,
+    onUpsert,
+    cachedOfficialRows = [],
+  } = opts;
 
   return () => ({
-    from: (_table: string) => ({
-      // Cache read chain: .select().eq().maybeSingle()
+    from: (table: string) => ({
       select: (_cols: string) => ({
-        eq: (_col: string, _val: string) => ({
-          maybeSingle: () =>
-            Promise.resolve({ data: cacheRow, error: cacheError }),
-        }),
+        eq: (_col: string, _val: string) => {
+          // zip_cicero_officials join — awaitable list query
+          if (table === "zip_cicero_officials") {
+            return Promise.resolve({ data: cachedOfficialRows, error: null });
+          }
+          // district_zip_cache — .maybeSingle() needed
+          return {
+            maybeSingle: () => Promise.resolve({ data: cacheRow, error: cacheError }),
+          };
+        },
       }),
-      // Cache write: .upsert(data)
       upsert: (data: Record<string, unknown>) => {
-        onUpsert?.(data);
+        onUpsert?.(table, data);
         return Promise.resolve({ error: upsertError });
       },
     }),
@@ -69,7 +84,7 @@ function makeEnvStub(overrides: Record<string, string> = {}) {
   const defaults: Record<string, string> = {
     SUPABASE_URL: "http://localhost:54321",
     SUPABASE_SERVICE_ROLE_KEY: "test-key",
-    GOOGLE_CIVIC_API_KEY: "test-civic-key",
+    CICERO_API_KEY: "test-cicero-key",
     DISTRICT_CACHE_TTL_DAYS: "90",
   };
   const env = { ...defaults, ...overrides };
@@ -77,10 +92,10 @@ function makeEnvStub(overrides: Record<string, string> = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Civic API fetch mock helper
+// Cicero API fetch mock helper
 // ---------------------------------------------------------------------------
 
-function mockCivicFetch(response: Response | (() => never)): () => void {
+function mockCiceroFetch(response: Response | (() => never)): () => void {
   const original = globalThis.fetch;
   globalThis.fetch = ((_url: string | URL | Request) => {
     if (typeof response === "function") response();
@@ -91,7 +106,7 @@ function mockCivicFetch(response: Response | (() => never)): () => void {
   };
 }
 
-function civicJson(body: unknown, status = 200): Response {
+function mockJson(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -99,33 +114,133 @@ function civicJson(body: unknown, status = 200): Response {
 }
 
 // ---------------------------------------------------------------------------
-// Shared test fixture: a valid Indiana civic API response
+// Shared test fixture: a valid Indiana Cicero API response
+// Uses the candidates[0] structure; match_region drives the Indiana check.
 // ---------------------------------------------------------------------------
 
-const CIVIC_IN = {
-  normalizedInput: { city: "Indianapolis", state: "IN", zip: "46201" },
-  divisions: {
-    "ocd-division/country:us/state:in/sldl:92": { name: "Indiana 92nd House" },
-    "ocd-division/country:us/state:in": { name: "Indiana" },
+function makeCiceroCandidate(matchRegion: string, officials: unknown[]) {
+  return {
+    response: {
+      results: {
+        candidates: [{
+          match_region: matchRegion,
+          match_addr: "46201",
+          match_city: "Indianapolis",
+          match_subregion: "Marion",
+          match_postal: "46201",
+          match_country: "US",
+          match_streetaddr: "",
+          x: -86.1581,
+          y: 39.7684,
+          wkid: 4326,
+          locator: "ZIP",
+          locator_type: "ZIP5",
+          geoservice: "Esri",
+          score: 100,
+          count: { from: 0, to: officials.length - 1, total: officials.length },
+          officials,
+        }],
+      },
+    },
+  };
+}
+
+function makeOfficial(overrides: Record<string, unknown>) {
+  return {
+    id: 1,
+    sk: 1,
+    valid_from: "2025-01-01 00:00:00",
+    valid_to: null,
+    last_update_date: "2025-01-01 00:00:00",
+    salutation: "",
+    first_name: "Jane",
+    middle_initial: "",
+    last_name: "Smith",
+    nickname: "",
+    preferred_name: "",
+    name_suffix: "",
+    party: "Democratic",
+    photo_origin_url: null,
+    photo_cropping: null,
+    web_form_url: "",
+    urls: [],
+    initial_term_start_date: null,
+    current_term_start_date: "2025-01-01 00:00:00",
+    term_end_date: "2027-01-01 00:00:00",
+    notes: ["Bio text.", null],
+    titles: [],
+    addresses: [{ address_1: "", address_2: "", address_3: "", city: "", county: "", state: "IN", postal_code: "", phone_1: "317-555-0100", fax_1: "", phone_2: "", fax_2: "" }],
+    email_addresses: ["jane@in.gov"],
+    committees: [],
+    identifiers: [],
+    office: {
+      id: 1, sk: 1, valid_from: "2025-01-01 00:00:00", valid_to: null,
+      last_update_date: "2025-01-01 00:00:00", notes: "", election_rules: "",
+      representing_city: "", representing_state: "IN", representing_country: {},
+      title: "Representative",
+      district: {
+        id: 1, sk: 1, valid_from: "2025-01-01 00:00:00", valid_to: null,
+        last_update_date: "2025-01-01 00:00:00", subtype: "LOWER", country: "US",
+        city: "", district_id: "92", label: "IN House District 92",
+        num_officials: 1, data: {},
+        district_type: "STATE_LOWER",
+        state: "IN",
+        ocd_id: "ocd-division/country:us/state:in/sldl:92",
+      },
+      chamber: {
+        id: 1, official_count: 100, term_length: "2 years", term_limit: "",
+        inauguration_rules: "", name_native_language: "", contact_phone: "",
+        election_frequency: "2 years", redistricting_rules: "", vacancy_rules: "",
+        is_chamber_complete: true, contact_email: "", last_update_date: "",
+        remarks: "", notes: "", url: "", has_geographic_representation: true,
+        is_appointed: false, election_rules: "", legislature_update_date: null,
+        government: { name: "Indiana", type: "STATE", city: "", state: "IN", notes: "", country: {} },
+        name: "House",
+        name_formal: "Indiana House of Representatives",
+        type: "LOWER",
+      },
+    },
+    ...overrides,
+  };
+}
+
+const OFFICIAL_STATE_REP = makeOfficial({});
+
+const OFFICIAL_US_SENATOR_1 = makeOfficial({
+  id: 2,
+  first_name: "John",
+  last_name: "Doe",
+  party: "Republican",
+  addresses: [{ address_1: "", address_2: "", address_3: "", city: "", county: "", state: "DC", postal_code: "", phone_1: "202-555-0200", fax_1: "", phone_2: "", fax_2: "" }],
+  email_addresses: [],
+  office: {
+    ...makeOfficial({}).office,
+    title: "Senator",
+    district: {
+      ...makeOfficial({}).office.district,
+      district_type: "NATIONAL_UPPER",
+      ocd_id: "ocd-division/country:us/state:in",
+      label: "Indiana",
+    },
+    chamber: { ...makeOfficial({}).office.chamber, name: "Senate", name_formal: "United States Senate", type: "UPPER" },
   },
-  offices: [
-    {
-      name: "State Representative",
-      divisionId: "ocd-division/country:us/state:in/sldl:92",
-      officialIndices: [0],
-    },
-    {
-      name: "U.S. Senator",
-      divisionId: "ocd-division/country:us/state:in",
-      officialIndices: [1, 2],
-    },
-  ],
-  officials: [
-    { name: "Jane Smith", party: "Democratic", phones: ["317-555-0100"], emails: ["jane@in.gov"] },
-    { name: "John Doe", party: "Republican", phones: ["202-555-0200"] },
-    { name: "Bob Jones", party: "Republican" },
-  ],
-};
+});
+
+const OFFICIAL_US_SENATOR_2 = makeOfficial({
+  id: 3,
+  first_name: "Bob",
+  last_name: "Jones",
+  party: "Republican",
+  addresses: [],
+  email_addresses: [],
+  office: OFFICIAL_US_SENATOR_1.office,
+});
+
+const CICERO_IN = makeCiceroCandidate("IN", [
+  OFFICIAL_STATE_REP,
+  OFFICIAL_US_SENATOR_1,
+  OFFICIAL_US_SENATOR_2,
+]);
 
 function postRequest(zip_code: string): Request {
   return new Request("http://localhost/", {
@@ -136,52 +251,45 @@ function postRequest(zip_code: string): Request {
 }
 
 // ===========================================================================
-// determineChamber — pure unit tests (no mocking needed)
+// districtTypeToChamber — pure unit tests (no mocking needed)
 // ===========================================================================
 
-Deno.test("determineChamber: us_house — all label variants", () => {
-  assertEquals(determineChamber("U.S. Representative"), "us_house");
-  assertEquals(determineChamber("US Representative, District 5"), "us_house");
-  assertEquals(determineChamber("United States Representative"), "us_house");
-  assertEquals(determineChamber("U.S. House"), "us_house");
-  assertEquals(determineChamber("US House of Representatives"), "us_house");
-  assertEquals(determineChamber("United States House"), "us_house");
+Deno.test("districtTypeToChamber: STATE_LOWER → house", () => {
+  assertEquals(districtTypeToChamber("STATE_LOWER"), "house");
 });
 
-Deno.test("determineChamber: us_senate — all label variants", () => {
-  assertEquals(determineChamber("U.S. Senator"), "us_senate");
-  assertEquals(determineChamber("US Senator"), "us_senate");
-  assertEquals(determineChamber("United States Senator"), "us_senate");
-  assertEquals(determineChamber("U.S. Senate"), "us_senate");
-  assertEquals(determineChamber("US Senate"), "us_senate");
-  assertEquals(determineChamber("United States Senate"), "us_senate");
+Deno.test("districtTypeToChamber: STATE_UPPER → senate", () => {
+  assertEquals(districtTypeToChamber("STATE_UPPER"), "senate");
 });
 
-Deno.test("determineChamber: state house — all label variants", () => {
-  assertEquals(determineChamber("State Representative"), "house");
-  assertEquals(determineChamber("Indiana State Representative"), "house");
-  assertEquals(determineChamber("State House Member"), "house");
+Deno.test("districtTypeToChamber: NATIONAL_LOWER → us_house", () => {
+  assertEquals(districtTypeToChamber("NATIONAL_LOWER"), "us_house");
 });
 
-Deno.test("determineChamber: state senate — all label variants", () => {
-  assertEquals(determineChamber("State Senator"), "senate");
-  assertEquals(determineChamber("Indiana State Senator"), "senate");
-  assertEquals(determineChamber("State Senate"), "senate");
+Deno.test("districtTypeToChamber: NATIONAL_UPPER → us_senate", () => {
+  assertEquals(districtTypeToChamber("NATIONAL_UPPER"), "us_senate");
 });
 
-Deno.test("determineChamber: case insensitive", () => {
-  assertEquals(determineChamber("u.s. representative"), "us_house");
-  assertEquals(determineChamber("STATE REPRESENTATIVE"), "house");
-  assertEquals(determineChamber("U.S. SENATOR"), "us_senate");
-  assertEquals(determineChamber("state senate"), "senate");
+Deno.test("districtTypeToChamber: STATE_EXEC → state_exec", () => {
+  assertEquals(districtTypeToChamber("STATE_EXEC"), "state_exec");
 });
 
-Deno.test("determineChamber: unknown offices return null", () => {
-  assertEquals(determineChamber("Mayor"), null);
-  assertEquals(determineChamber("Governor"), null);
-  assertEquals(determineChamber("City Council Member"), null);
-  assertEquals(determineChamber(""), null);
-  assertEquals(determineChamber("School Board"), null);
+Deno.test("districtTypeToChamber: LOCAL → local", () => {
+  assertEquals(districtTypeToChamber("LOCAL"), "local");
+});
+
+Deno.test("districtTypeToChamber: LOCAL_EXEC → local_exec", () => {
+  assertEquals(districtTypeToChamber("LOCAL_EXEC"), "local_exec");
+});
+
+Deno.test("districtTypeToChamber: NATIONAL_EXEC → national_exec", () => {
+  assertEquals(districtTypeToChamber("NATIONAL_EXEC"), "national_exec");
+});
+
+Deno.test("districtTypeToChamber: unknown types return null", () => {
+  assertEquals(districtTypeToChamber("COUNTY"), null);
+  assertEquals(districtTypeToChamber("state_lower"), null); // case sensitive
+  assertEquals(districtTypeToChamber(""), null);
 });
 
 // ===========================================================================
@@ -278,23 +386,33 @@ Deno.test("handler: alpha zip → 400", async () => {
 });
 
 // ===========================================================================
-// Handler — cache hit (fresh) — Civic API must NOT be called
+// Handler — cache hit (fresh) — Cicero API must NOT be called
 // ===========================================================================
 
-Deno.test("handler: fresh cache hit returns cached data without calling Civic API", async () => {
+Deno.test("handler: fresh cache hit returns cached data without calling Cicero API", async () => {
   const env = makeEnvStub();
-  let civicCalled = false;
-  const restoreFetch = mockCivicFetch((() => {
-    civicCalled = true;
-    return civicJson({});
+  let ciceroCalled = false;
+  const restoreFetch = mockCiceroFetch((() => {
+    ciceroCalled = true;
+    return mockJson({});
   }) as unknown as Response);
 
   const supabase = makeSupabaseMock({
     cacheRow: {
       district_id: "ocd-division/country:us/state:in/sldl:92",
-      representatives: [{ name: "Jane Smith", chamber: "house", district: "..." }],
       cached_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // 1 hour ago
     },
+    cachedOfficialRows: [
+      {
+        cicero_officials: {
+          first_name: "Jane", last_name: "Smith", party: "Democratic",
+          district_type: "STATE_LOWER",
+          district_ocd_id: "ocd-division/country:us/state:in/sldl:92",
+          addresses: [{ phone_1: "317-555-0100" }],
+          email_addresses: ["jane@in.gov"],
+        },
+      },
+    ],
   });
 
   try {
@@ -302,7 +420,10 @@ Deno.test("handler: fresh cache hit returns cached data without calling Civic AP
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.district_id, "ocd-division/country:us/state:in/sldl:92");
-    assertEquals(civicCalled, false);
+    assertEquals(body.officials.length, 1);
+    assertEquals(body.officials[0].first_name, "Jane");
+    assertEquals(body.officials[0].last_name, "Smith");
+    assertEquals(ciceroCalled, false);
   } finally {
     env.restore();
     restoreFetch();
@@ -310,30 +431,31 @@ Deno.test("handler: fresh cache hit returns cached data without calling Civic AP
 });
 
 // ===========================================================================
-// Handler — stale cache → falls through to Civic API and upserts
+// Handler — stale cache → falls through to Cicero API and upserts
 // ===========================================================================
 
-Deno.test("handler: stale cache (91 days) calls Civic API and upserts new data", async () => {
+Deno.test("handler: stale cache (91 days) calls Cicero API and upserts new data", async () => {
   const env = makeEnvStub();
-  let upsertData: Record<string, unknown> | null = null;
+  const upserted: Array<{ table: string; data: Record<string, unknown> }> = [];
 
   const supabase = makeSupabaseMock({
     cacheRow: {
       district_id: "old-district",
-      representatives: [],
       cached_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 91).toISOString(),
     },
-    onUpsert: (data) => { upsertData = data; },
+    onUpsert: (table, data) => { upserted.push({ table, data }); },
   });
 
-  const restoreFetch = mockCivicFetch(civicJson(CIVIC_IN));
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
 
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 200);
     assertEquals((await res.json()).district_id, "ocd-division/country:us/state:in/sldl:92");
-    assertEquals(upsertData !== null, true);
-    assertEquals((upsertData as unknown as Record<string, unknown>).zip_code, "46201");
+    // Should have upserted: 1 district_zip_cache + 3 cicero_officials + 3 zip_cicero_officials
+    const districtUpserts = upserted.filter((u) => u.table === "district_zip_cache");
+    assertEquals(districtUpserts.length, 1);
+    assertEquals(districtUpserts[0].data.zip_code, "46201");
   } finally {
     env.restore();
     restoreFetch();
@@ -358,30 +480,30 @@ Deno.test("handler: cache lookup DB error → 500", async () => {
 });
 
 // ===========================================================================
-// Handler — missing Civic API key → 500
+// Handler — missing Cicero API key → 500
 // ===========================================================================
 
-Deno.test("handler: missing GOOGLE_CIVIC_API_KEY → 500", async () => {
-  const env = makeEnvStub({ GOOGLE_CIVIC_API_KEY: "" });
+Deno.test("handler: missing CICERO_API_KEY → 500", async () => {
+  const env = makeEnvStub({ CICERO_API_KEY: "" });
   const supabase = makeSupabaseMock({ cacheRow: null });
 
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 500);
-    assertEquals((await res.json()).error, "Google Civic API key not configured");
+    assertEquals((await res.json()).error, "Cicero API key not configured");
   } finally {
     env.restore();
   }
 });
 
 // ===========================================================================
-// Handler — Civic API error paths
+// Handler — Cicero API error paths
 // ===========================================================================
 
-Deno.test("handler: Civic API 404 → 404 with human-readable message", async () => {
+Deno.test("handler: Cicero API 404 → 404 with human-readable message", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(civicJson({ error: { code: 404 } }, 404));
+  const restoreFetch = mockCiceroFetch(mockJson({ error: { code: 404 } }, 404));
 
   try {
     const res = await handler(postRequest("00000"), supabase);
@@ -396,10 +518,10 @@ Deno.test("handler: Civic API 404 → 404 with human-readable message", async ()
   }
 });
 
-Deno.test("handler: Civic API 500 → 502", async () => {
+Deno.test("handler: Cicero API 500 → 502", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(new Response("Server Error", { status: 500 }));
+  const restoreFetch = mockCiceroFetch(new Response("Server Error", { status: 500 }));
 
   try {
     const res = await handler(postRequest("46201"), supabase);
@@ -411,7 +533,7 @@ Deno.test("handler: Civic API 500 → 502", async () => {
   }
 });
 
-Deno.test("handler: Civic API network failure → 502", async () => {
+Deno.test("handler: Cicero API network failure → 502", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
 
@@ -421,7 +543,7 @@ Deno.test("handler: Civic API network failure → 502", async () => {
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 502);
-    assertEquals((await res.json()).error, "Failed to reach Google Civic API");
+    assertEquals((await res.json()).error, "Failed to reach Cicero API");
   } finally {
     env.restore();
     globalThis.fetch = original;
@@ -429,19 +551,21 @@ Deno.test("handler: Civic API network failure → 502", async () => {
 });
 
 // ===========================================================================
-// Handler — Indiana validation
+// Handler — Indiana validation (now driven by candidate.match_region)
 // ===========================================================================
 
-Deno.test("handler: non-Indiana ZIP (IL) → 422", async () => {
+Deno.test("handler: non-Indiana ZIP (IL match_region) → 422", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(
-    civicJson({
-      normalizedInput: { city: "Chicago", state: "IL", zip: "60601" },
-      divisions: {},
-      offices: [],
-      officials: [],
-    }),
+  const restoreFetch = mockCiceroFetch(
+    mockJson(makeCiceroCandidate("IL", [
+      makeOfficial({
+        office: {
+          ...makeOfficial({}).office,
+          district: { ...makeOfficial({}).office.district, district_type: "STATE_LOWER", ocd_id: "ocd-division/country:us/state:il/sldl:1", state: "IL" },
+        },
+      }),
+    ])),
   );
 
   try {
@@ -454,25 +578,37 @@ Deno.test("handler: non-Indiana ZIP (IL) → 422", async () => {
   }
 });
 
+Deno.test("handler: no candidate in Cicero response → 422", async () => {
+  const env = makeEnvStub();
+  const supabase = makeSupabaseMock({ cacheRow: null });
+  const restoreFetch = mockCiceroFetch(
+    mockJson({ response: { results: { candidates: [] } } }),
+  );
+
+  try {
+    const res = await handler(postRequest("46201"), supabase);
+    assertEquals(res.status, 422);
+    assertEquals((await res.json()).error, "ZIP code is not in Indiana");
+  } finally {
+    env.restore();
+    restoreFetch();
+  }
+});
+
 // ===========================================================================
 // Handler — district ID extraction priority
 // ===========================================================================
 
-Deno.test("handler: prefers sldl > sldu > cd > state:in when all divisions present", async () => {
+Deno.test("handler: prefers STATE_LOWER > STATE_UPPER > NATIONAL_LOWER > any state:in", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(
-    civicJson({
-      normalizedInput: { state: "IN", zip: "46201" },
-      divisions: {
-        "ocd-division/country:us/state:in/sldl:92": {},
-        "ocd-division/country:us/state:in/sldu:30": {},
-        "ocd-division/country:us/state:in/cd:7": {},
-        "ocd-division/country:us/state:in": {},
-      },
-      offices: [],
-      officials: [],
-    }),
+  const restoreFetch = mockCiceroFetch(
+    mockJson(makeCiceroCandidate("IN", [
+      makeOfficial({ id: 1, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_LOWER", ocd_id: "ocd-division/country:us/state:in/sldl:92" } } }),
+      makeOfficial({ id: 2, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_UPPER", ocd_id: "ocd-division/country:us/state:in/sldu:30" } } }),
+      makeOfficial({ id: 3, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "NATIONAL_LOWER", ocd_id: "ocd-division/country:us/state:in/cd:7" } } }),
+      makeOfficial({ id: 4, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "NATIONAL_UPPER", ocd_id: "ocd-division/country:us/state:in" } } }),
+    ])),
   );
 
   try {
@@ -485,47 +621,20 @@ Deno.test("handler: prefers sldl > sldu > cd > state:in when all divisions prese
   }
 });
 
-Deno.test("handler: falls back to sldu when sldl is absent", async () => {
+Deno.test("handler: falls back to STATE_UPPER when STATE_LOWER is absent", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(
-    civicJson({
-      normalizedInput: { state: "IN", zip: "46201" },
-      divisions: {
-        "ocd-division/country:us/state:in/sldu:30": {},
-        "ocd-division/country:us/state:in/cd:7": {},
-      },
-      offices: [],
-      officials: [],
-    }),
+  const restoreFetch = mockCiceroFetch(
+    mockJson(makeCiceroCandidate("IN", [
+      makeOfficial({ id: 2, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_UPPER", ocd_id: "ocd-division/country:us/state:in/sldu:30" } } }),
+      makeOfficial({ id: 3, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "NATIONAL_LOWER", ocd_id: "ocd-division/country:us/state:in/cd:7" } } }),
+    ])),
   );
 
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 200);
     assertEquals((await res.json()).district_id, "ocd-division/country:us/state:in/sldu:30");
-  } finally {
-    env.restore();
-    restoreFetch();
-  }
-});
-
-Deno.test("handler: no Indiana divisions → 422", async () => {
-  const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(
-    civicJson({
-      normalizedInput: { state: "IN", zip: "46201" },
-      divisions: {},
-      offices: [],
-      officials: [],
-    }),
-  );
-
-  try {
-    const res = await handler(postRequest("46201"), supabase);
-    assertEquals(res.status, 422);
-    assertEquals((await res.json()).error, "Could not determine district for this ZIP code");
   } finally {
     env.restore();
     restoreFetch();
@@ -539,7 +648,7 @@ Deno.test("handler: no Indiana divisions → 422", async () => {
 Deno.test("handler: happy path returns correct district_id and all representative fields", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(civicJson(CIVIC_IN));
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
 
   try {
     const res = await handler(postRequest("46201"), supabase);
@@ -547,65 +656,91 @@ Deno.test("handler: happy path returns correct district_id and all representativ
     const body = await res.json();
 
     assertEquals(body.district_id, "ocd-division/country:us/state:in/sldl:92");
-    assertEquals(body.representatives.length, 3);
+    assertEquals(body.officials.length, 3);
 
     // State representative
-    assertEquals(body.representatives[0].name, "Jane Smith");
-    assertEquals(body.representatives[0].chamber, "house");
-    assertEquals(body.representatives[0].district, "ocd-division/country:us/state:in/sldl:92");
-    assertEquals(body.representatives[0].phone, "317-555-0100");
-    assertEquals(body.representatives[0].email, "jane@in.gov");
-    assertEquals(body.representatives[0].party, "Democratic");
+    assertEquals(body.officials[0].first_name, "Jane");
+    assertEquals(body.officials[0].last_name, "Smith");
+    assertEquals(body.officials[0].chamber, "house");
+    assertEquals(body.officials[0].office_title, "Representative");
+    assertEquals(body.officials[0].district_ocd_id, "ocd-division/country:us/state:in/sldl:92");
+    assertEquals(body.officials[0].addresses[0].phone_1, "317-555-0100");
+    assertEquals(body.officials[0].email_addresses[0], "jane@in.gov");
+    assertEquals(body.officials[0].party, "Democratic");
 
     // Two US senators
-    assertEquals(body.representatives[1].name, "John Doe");
-    assertEquals(body.representatives[1].chamber, "us_senate");
-    assertEquals(body.representatives[1].phone, "202-555-0200");
-    assertEquals(body.representatives[1].email, undefined);
+    assertEquals(body.officials[1].first_name, "John");
+    assertEquals(body.officials[1].last_name, "Doe");
+    assertEquals(body.officials[1].chamber, "us_senate");
+    assertEquals(body.officials[1].addresses[0].phone_1, "202-555-0200");
+    assertEquals(body.officials[1].email_addresses.length, 0);
 
-    assertEquals(body.representatives[2].name, "Bob Jones");
-    assertEquals(body.representatives[2].chamber, "us_senate");
-    assertEquals(body.representatives[2].phone, undefined);
+    assertEquals(body.officials[2].first_name, "Bob");
+    assertEquals(body.officials[2].last_name, "Jones");
+    assertEquals(body.officials[2].chamber, "us_senate");
+    assertEquals(body.officials[2].addresses.length, 0);
   } finally {
     env.restore();
     restoreFetch();
   }
 });
 
-Deno.test("handler: offices with unknown chamber are excluded from response", async () => {
+Deno.test("handler: LOCAL and LOCAL_EXEC officials are included in response", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({ cacheRow: null });
-  const restoreFetch = mockCivicFetch(
-    civicJson({
-      normalizedInput: { state: "IN", zip: "46201" },
-      divisions: { "ocd-division/country:us/state:in/sldl:92": {} },
-      offices: [
-        {
-          name: "Mayor",
-          divisionId: "ocd-division/country:us/state:in/sldl:92",
-          officialIndices: [0],
-        },
-        {
-          name: "State Representative",
-          divisionId: "ocd-division/country:us/state:in/sldl:92",
-          officialIndices: [1],
-        },
-      ],
-      officials: [
-        { name: "Mayor Bob" },
-        { name: "Rep Alice", party: "Republican" },
-      ],
-    }),
+  const restoreFetch = mockCiceroFetch(
+    mockJson(makeCiceroCandidate("IN", [
+      makeOfficial({
+        id: 10, first_name: "Mayor", last_name: "Bob",
+        office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "LOCAL_EXEC", ocd_id: "ocd-division/country:us/state:in/place:indianapolis" } },
+      }),
+      makeOfficial({
+        id: 11, first_name: "Rep", last_name: "Alice", party: "Republican",
+        office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_LOWER", ocd_id: "ocd-division/country:us/state:in/sldl:92" } },
+      }),
+    ])),
   );
 
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 200);
     const body = await res.json();
-    // Mayor is filtered out — only the State Representative remains
-    assertEquals(body.representatives.length, 1);
-    assertEquals(body.representatives[0].name, "Rep Alice");
-    assertEquals(body.representatives[0].chamber, "house");
+    assertEquals(body.officials.length, 2);
+    assertEquals(body.officials[0].first_name, "Mayor");
+    assertEquals(body.officials[0].last_name, "Bob");
+    assertEquals(body.officials[0].chamber, "local_exec");
+    assertEquals(body.officials[1].first_name, "Rep");
+    assertEquals(body.officials[1].last_name, "Alice");
+    assertEquals(body.officials[1].chamber, "house");
+  } finally {
+    env.restore();
+    restoreFetch();
+  }
+});
+
+Deno.test("handler: officials with truly unknown district_type are excluded from response", async () => {
+  const env = makeEnvStub();
+  const supabase = makeSupabaseMock({ cacheRow: null });
+  const restoreFetch = mockCiceroFetch(
+    mockJson(makeCiceroCandidate("IN", [
+      makeOfficial({
+        id: 10, first_name: "Unknown", last_name: "Type",
+        office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "SCHOOL_BOARD", ocd_id: "ocd-division/country:us/state:in/school:1" } },
+      }),
+      makeOfficial({
+        id: 11, first_name: "Rep", last_name: "Alice", party: "Republican",
+        office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_LOWER", ocd_id: "ocd-division/country:us/state:in/sldl:92" } },
+      }),
+    ])),
+  );
+
+  try {
+    const res = await handler(postRequest("46201"), supabase);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.officials.length, 1);
+    assertEquals(body.officials[0].first_name, "Rep");
+    assertEquals(body.officials[0].last_name, "Alice");
   } finally {
     env.restore();
     restoreFetch();
@@ -622,7 +757,7 @@ Deno.test("handler: upsert failure does not affect 200 response", async () => {
     cacheRow: null,
     upsertError: { message: "write failed" },
   });
-  const restoreFetch = mockCivicFetch(civicJson(CIVIC_IN));
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
 
   try {
     const res = await handler(postRequest("46201"), supabase);
@@ -640,26 +775,25 @@ Deno.test("handler: upsert failure does not affect 200 response", async () => {
 
 Deno.test("handler: custom DISTRICT_CACHE_TTL_DAYS=30 treats 31-day-old cache as stale", async () => {
   const env = makeEnvStub({ DISTRICT_CACHE_TTL_DAYS: "30" });
-  let civicCalled = false;
+  let ciceroCalled = false;
 
   const supabase = makeSupabaseMock({
     cacheRow: {
       district_id: "old-district",
-      representatives: [],
       cached_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 31).toISOString(),
     },
   });
 
   const original = globalThis.fetch;
   globalThis.fetch = ((() => {
-    civicCalled = true;
-    return Promise.resolve(civicJson(CIVIC_IN));
+    ciceroCalled = true;
+    return Promise.resolve(mockJson(CICERO_IN));
   }) as unknown) as typeof fetch;
 
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 200);
-    assertEquals(civicCalled, true);
+    assertEquals(ciceroCalled, true);
   } finally {
     env.restore();
     globalThis.fetch = original;
@@ -668,26 +802,26 @@ Deno.test("handler: custom DISTRICT_CACHE_TTL_DAYS=30 treats 31-day-old cache as
 
 Deno.test("handler: invalid DISTRICT_CACHE_TTL_DAYS defaults to 90 — 89-day cache is still fresh", async () => {
   const env = makeEnvStub({ DISTRICT_CACHE_TTL_DAYS: "not-a-number" });
-  let civicCalled = false;
+  let ciceroCalled = false;
 
   const supabase = makeSupabaseMock({
     cacheRow: {
       district_id: "ocd-division/country:us/state:in/sldl:92",
-      representatives: [],
       cached_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 89).toISOString(),
     },
+    cachedOfficialRows: [],
   });
 
   const original = globalThis.fetch;
   globalThis.fetch = ((() => {
-    civicCalled = true;
-    return Promise.resolve(civicJson({}));
+    ciceroCalled = true;
+    return Promise.resolve(mockJson({}));
   }) as unknown) as typeof fetch;
 
   try {
     const res = await handler(postRequest("46201"), supabase);
     assertEquals(res.status, 200);
-    assertEquals(civicCalled, false); // served from cache, Civic API not hit
+    assertEquals(ciceroCalled, false); // served from cache, Cicero API not hit
   } finally {
     env.restore();
     globalThis.fetch = original;

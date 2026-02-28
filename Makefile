@@ -1,5 +1,4 @@
 .PHONY: setup dev stop test lint check migration db-push functions-deploy \
-        infra-init-dev infra-plan-dev infra-apply-dev \
         infra-init-prod infra-plan-prod
 
 # ── Local dev ──────────────────────────────────────────────────────────────────
@@ -44,17 +43,6 @@ functions-deploy: ## Deploy all Edge Functions to the linked remote project
 
 functions-serve: ## Serve Edge Functions locally for development
 	supabase functions serve
-
-# ── OpenTofu (dev) ─────────────────────────────────────────────────────────────
-
-infra-init-dev: ## Init OpenTofu for dev environment
-	cd infra/environments/dev && tofu init
-
-infra-plan-dev: ## Plan OpenTofu changes for dev
-	cd infra/environments/dev && tofu plan
-
-infra-apply-dev: ## Apply OpenTofu changes to dev (maintainers only)
-	cd infra/environments/dev && tofu apply
 
 # ── OpenTofu (prod) ────────────────────────────────────────────────────────────
 # Prod apply is CI/CD only. Plan is available for local review.

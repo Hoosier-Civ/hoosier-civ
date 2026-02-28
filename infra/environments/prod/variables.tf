@@ -26,3 +26,9 @@ variable "anthropic_api_key" {
   sensitive   = true
 }
 
+variable "cicero_api_key" {
+  description = "Cicero (Azavea) API key for the lookup-district edge function"
+  type        = string
+  sensitive   = true
+}
+

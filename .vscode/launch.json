@@ -1,0 +1,62 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Serve: lookup-district",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "supabase",
+     "runtimeArgs": [
+        "functions",
+        "serve",
+        "aggregate-news",
+        "--env-file",
+        ".env.local",
+        "--no-verify-jwt",
+        "--inspect-mode",
+        "run"
+      ],
+      "port": 9229,
+      "attachExistingChildren": false,
+      "autoAttachChildProcesses": false
+    },
+    {
+      "name": "Serve: generate-bill-quiz",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "supabase",
+      "runtimeArgs": [
+        "functions",
+        "serve",
+        "aggregate-news",
+        "--env-file",
+        ".env.local",
+        "--no-verify-jwt",
+        "--inspect-mode",
+        "run"
+      ],
+      "port": 9229,
+      "attachExistingChildren": false,
+      "autoAttachChildProcesses": false
+    },
+    {
+      "name": "Serve: aggregate-news",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "supabase",
+      "runtimeArgs": [
+        "functions",
+        "serve",
+        "aggregate-news",
+        "--env-file",
+        ".env.local",
+        "--no-verify-jwt",
+        "--inspect-mode",
+        "run"
+      ],
+      "port": 9229,
+      "attachExistingChildren": false,
+      "autoAttachChildProcesses": false
+    }
+  ]
+}

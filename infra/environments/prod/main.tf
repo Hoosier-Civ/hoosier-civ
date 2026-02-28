@@ -14,8 +14,8 @@ module "supabase" {
   database_password       = var.supabase_db_password
   region                  = "us-east-1"
   site_url                = "https://hoosierciv.com"
-  supabase_access_token   = var.supabase_access_token
-  google_civic_api_key    = module.firebase.civic_api_key
-  anthropic_api_key       = var.anthropic_api_key
+  supabase_access_token = var.supabase_access_token
+  cicero_api_key        = var.cicero_api_key
+  anthropic_api_key     = var.anthropic_api_key
 
 }
