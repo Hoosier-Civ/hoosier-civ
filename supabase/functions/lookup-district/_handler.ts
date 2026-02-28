@@ -242,7 +242,7 @@ export async function handler(
 
     const officials = (joinRows ?? [])
       .map((r: { cicero_officials: unknown }) => fromCacheRow(r.cicero_officials))
-      .filter((o): o is OfficialResponse => o !== null);
+      .filter((o: OfficialResponse | null): o is OfficialResponse => o !== null);
 
     return new Response(
       JSON.stringify({ district_id: cached.district_id, officials }),
