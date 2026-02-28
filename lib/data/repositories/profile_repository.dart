@@ -27,9 +27,11 @@ class ProfileRepository {
       throw StateError('Cannot update profile without an authenticated user.');
     }
 
+    final payload = profile.toJson()..['id'] = userId;
+
     final data = await _supabase
         .from('profiles')
-        .upsert(profile.toJson())
+        .upsert(payload)
         .select()
         .single();
 
