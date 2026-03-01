@@ -2,6 +2,8 @@ class AppConstants {
   // Routes
   static const String routeHome = '/home';
   static const String routeOnboarding = '/onboarding';
+  static const String routeOnboardingAddress = '/onboarding/address';
+  static const String routeOnboardingAuth = '/onboarding/auth';
   static const String routeProfile = '/profile';
   static const String routeProfileBadges = '/profile/badges';
 
