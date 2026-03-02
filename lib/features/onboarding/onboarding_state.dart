@@ -14,11 +14,13 @@ final class OnboardingZipLoading extends OnboardingState {
 
 final class OnboardingZipVerified extends OnboardingState {
   final String zipCode;
+  final String city;
   final String districtId;
   final List<OfficialResponse> officials;
 
   const OnboardingZipVerified({
     required this.zipCode,
+    required this.city,
     required this.districtId,
     required this.officials,
   });
@@ -26,11 +28,13 @@ final class OnboardingZipVerified extends OnboardingState {
 
 final class OnboardingAuthPending extends OnboardingState {
   final String zipCode;
+  final String city;
   final String districtId;
   final List<OfficialResponse> officials;
 
   const OnboardingAuthPending({
     required this.zipCode,
+    required this.city,
     required this.districtId,
     required this.officials,
   });

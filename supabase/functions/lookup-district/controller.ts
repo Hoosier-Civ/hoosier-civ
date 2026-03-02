@@ -1,5 +1,6 @@
 export class LookUpDistrictController {
-  zipCode!: string;
+  zip!: string;
+  address?: string;
 
   constructor(private readonly req: Request) {}
 
@@ -13,14 +14,16 @@ export class LookUpDistrictController {
 
     try {
       const body = await this.req.json();
-      const zip = body.zip_code?.toString().trim();
+      const zip = body.zip?.toString().trim();
       if (!zip || !/^\d{5}$/.test(zip)) {
-        return new Response(JSON.stringify({ error: "zip_code must be a 5-digit string" }), {
+        return new Response(JSON.stringify({ error: "zip must be a 5-digit string" }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
       }
-      this.zipCode = zip;
+      this.zip = zip;
+      const address = body.address?.toString().trim();
+      if (address) this.address = address;
     } catch {
       return new Response(JSON.stringify({ error: "Invalid request body" }), {
         status: 400,

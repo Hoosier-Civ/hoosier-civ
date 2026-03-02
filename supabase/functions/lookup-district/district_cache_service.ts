@@ -3,6 +3,7 @@ import { SupabaseClient } from "npm:@supabase/supabase-js";
 export type CacheRow = {
   district_id: string;
   cached_at: string;
+  match_city?: string | null;
 };
 
 export class CacheError extends Error {
@@ -19,7 +20,7 @@ export class DistrictCacheService {
   async get(zipCode: string): Promise<CacheRow | null> {
     const { data, error } = await this.client
       .from("district_zip_cache")
-      .select("district_id, cached_at")
+      .select("district_id, cached_at, match_city")
       .eq("zip_code", zipCode)
       .maybeSingle();
 
@@ -36,10 +37,11 @@ export class DistrictCacheService {
     return ageMs / (1000 * 60 * 60 * 24) < ttlDays;
   }
 
-  async upsert(zipCode: string, districtId: string): Promise<void> {
+  async upsert(zipCode: string, districtId: string, matchCity?: string): Promise<void> {
     const { error } = await this.client.from("district_zip_cache").upsert({
       zip_code: zipCode,
       district_id: districtId,
+      match_city: matchCity ?? null,
       cached_at: new Date().toISOString(),
     });
 

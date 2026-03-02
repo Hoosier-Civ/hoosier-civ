@@ -2,10 +2,14 @@ import 'package:hoosierciv/data/models/official_response.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DistrictLookupResult {
+  final String city;
+  final String zipCode;
   final String districtId;
   final List<OfficialResponse> officials;
 
   const DistrictLookupResult({
+    required this.city,
+    required this.zipCode,
     required this.districtId,
     required this.officials,
   });
@@ -17,10 +21,10 @@ class DistrictRepository {
   const DistrictRepository({required SupabaseClient supabase})
       : _supabase = supabase;
 
-  Future<DistrictLookupResult> lookupDistrict(String zipCode) async {
+  Future<DistrictLookupResult> lookupDistrict(String zip, {String? address}) async {
     final response = await _supabase.functions.invoke(
       'lookup-district',
-      body: {'zip_code': zipCode},
+      body: {'zip': zip, if (address != null) 'address': address},
     );
 
     if (response.status != 200) {
@@ -31,11 +35,18 @@ class DistrictRepository {
     }
 
     final data = response.data as Map<String, dynamic>;
+    final city = data['city'] as String? ?? '';
+    final zipCode = data['zip_code'] as String? ?? '';
     final districtId = data['district_id'] as String;
     final officials = (data['officials'] as List? ?? [])
         .map((o) => OfficialResponse.fromJson(o as Map<String, dynamic>))
         .toList();
 
-    return DistrictLookupResult(districtId: districtId, officials: officials);
+    return DistrictLookupResult(
+      city: city,
+      zipCode: zipCode,
+      districtId: districtId,
+      officials: officials,
+    );
   }
 }

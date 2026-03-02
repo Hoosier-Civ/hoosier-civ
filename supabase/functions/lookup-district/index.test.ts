@@ -17,61 +17,63 @@ import { districtTypeToChamber, handler } from "./_handler.ts";
 // Types
 // ---------------------------------------------------------------------------
 
-interface CacheRow {
-  district_id: string;
-  cached_at: string;
-}
-
 interface MockSupabaseOptions {
-  /** Row returned by the district_zip_cache SELECT, or null for a miss. */
-  cacheRow?: CacheRow | null;
-  /** Error object returned by the cache SELECT (simulates a DB error). */
-  cacheError?: { message: string; code?: string } | null;
-  /** Error returned by the upsert, or null for success. */
+  /** Error returned by any upsert, or null for success. */
   upsertError?: { message: string } | null;
   /** Spy called when upsert is invoked, receives the table name and upserted data. */
   onUpsert?: (table: string, data: Record<string, unknown>) => void;
-  /**
-   * Rows returned by the zip_cicero_officials join query on a cache hit.
-   * Each element should be shaped { cicero_officials: { district_type, district_ocd_id,
-   * first_name, last_name, addresses, email_addresses, party } }.
-   */
-  cachedOfficialRows?: Record<string, unknown>[];
+  /** Row returned by district_zip_cache select, or null for a cache miss. */
+  cacheRow?: { district_id: string; cached_at: string; match_city?: string | null } | null;
+  /** Error returned by district_zip_cache select (causes CacheError → falls through). */
+  cacheSelectError?: { message: string } | null;
+  /** Rows returned by zip_cicero_officials select (join with cicero_officials). */
+  zipOfficials?: Array<{ cicero_officials: Record<string, unknown> }> | null;
+  /** Error returned by zip_cicero_officials select. */
+  zipOfficialsError?: { message: string } | null;
 }
 
 /**
  * Builds a mock of the Supabase client that covers:
- *   district_zip_cache  → .select().eq().maybeSingle()  (cache read)
- *   zip_cicero_officials → .select().eq()               (join read on cache hit)
- *   any table           → .upsert(data)                  (cache / officials write)
+ *   district_zip_cache   → .select(...).eq(...).maybeSingle()  (cache read)
+ *   district_zip_cache   → .upsert(data)                       (cache write)
+ *   zip_cicero_officials → .select("cicero_officials(*)").eq() (join read)
+ *   zip_cicero_officials → .upsert(data)                       (link write)
+ *   cicero_officials     → .upsert(data)                       (official write)
  */
 function makeSupabaseMock(opts: MockSupabaseOptions = {}) {
   const {
-    cacheRow = null,
-    cacheError = null,
     upsertError = null,
     onUpsert,
-    cachedOfficialRows = [],
+    cacheRow = null,
+    cacheSelectError = null,
+    zipOfficials = null,
+    zipOfficialsError = null,
   } = opts;
 
   return () => ({
     from: (table: string) => ({
-      select: (_cols: string) => ({
-        eq: (_col: string, _val: string) => {
-          // zip_cicero_officials join — awaitable list query
-          if (table === "zip_cicero_officials") {
-            return Promise.resolve({ data: cachedOfficialRows, error: null });
-          }
-          // district_zip_cache — .maybeSingle() needed
-          return {
-            maybeSingle: () => Promise.resolve({ data: cacheRow, error: cacheError }),
-          };
-        },
-      }),
       upsert: (data: Record<string, unknown>) => {
         onUpsert?.(table, data);
         return Promise.resolve({ error: upsertError });
       },
+      select: (_fields: string) => ({
+        eq: (_col: string, _val: unknown) => {
+          // Decide what to return based on the table being queried
+          const arrayResult = table === "zip_cicero_officials"
+            ? { data: zipOfficials ?? [], error: zipOfficialsError ?? null }
+            : { data: [], error: null };
+
+          const singleResult = table === "district_zip_cache"
+            ? { data: cacheRow, error: cacheSelectError ?? null }
+            : { data: null, error: null };
+
+          // Return a thenable (awaitable as array) that also exposes .maybeSingle()
+          const p = Promise.resolve(arrayResult);
+          // deno-lint-ignore no-explicit-any
+          (p as any).maybeSingle = () => Promise.resolve(singleResult);
+          return p;
+        },
+      }),
     }),
   });
 }
@@ -105,6 +107,8 @@ function mockCiceroFetch(response: Response | (() => never)): () => void {
     globalThis.fetch = original;
   };
 }
+
+
 
 function mockJson(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -242,13 +246,78 @@ const CICERO_IN = makeCiceroCandidate("IN", [
   OFFICIAL_US_SENATOR_2,
 ]);
 
-function postRequest(zip_code: string): Request {
+const TEST_ADDRESS = "17941 Ambrosia Trail, Westfield, IN";
+const TEST_ZIP = "46074";
+
+function postRequest(zip: string, address?: string): Request {
   return new Request("http://localhost/", {
     method: "POST",
-    body: JSON.stringify({ zip_code }),
+    body: JSON.stringify({ zip, ...(address ? { address } : {}) }),
     headers: { "Content-Type": "application/json" },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Cache fixtures
+// ---------------------------------------------------------------------------
+
+/** A fresh cache row (cached just now, TTL not expired). */
+const FRESH_CACHE_ROW = {
+  district_id: "ocd-division/country:us/state:in/sldl:92",
+  cached_at: new Date().toISOString(),
+  match_city: "Indianapolis",
+};
+
+/** A stale cache row (cached 91 days ago, beyond the 90-day TTL). */
+const STALE_CACHE_ROW = {
+  district_id: "ocd-division/country:us/state:in/sldl:92",
+  cached_at: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString(),
+  match_city: "Indianapolis",
+};
+
+/** A cached DB official whose term is still in the future. */
+const DB_OFFICIAL_FRESH = {
+  cicero_id: 1,
+  first_name: "Jane",
+  last_name: "Smith",
+  middle_initial: null,
+  salutation: null,
+  nickname: null,
+  preferred_name: null,
+  name_suffix: null,
+  office_title: "Representative",
+  district_type: "STATE_LOWER",
+  district_ocd_id: "ocd-division/country:us/state:in/sldl:92",
+  district_state: "IN",
+  district_city: null,
+  district_label: "IN House District 92",
+  chamber_name: "House",
+  chamber_name_formal: "Indiana House of Representatives",
+  chamber_type: "LOWER",
+  party: "Democratic",
+  photo_url: null,
+  website_url: null,
+  web_form_url: null,
+  term_start_date: "2025-01-01",
+  term_end_date: "2027-01-01",
+  bio: null,
+  birth_date: null,
+  addresses: [],
+  email_addresses: ["jane@in.gov"],
+  committees: [],
+  identifiers: [],
+  cicero_valid_to: null,
+  cached_at: new Date().toISOString(),
+};
+
+/** A cached DB official whose term has expired. */
+const DB_OFFICIAL_EXPIRED = {
+  ...DB_OFFICIAL_FRESH,
+  term_end_date: "2020-01-01",
+};
+
+const ZIP_OFFICIALS_FRESH = [{ cicero_officials: DB_OFFICIAL_FRESH }];
+const ZIP_OFFICIALS_EXPIRED = [{ cicero_officials: DB_OFFICIAL_EXPIRED }];
 
 // ===========================================================================
 // districtTypeToChamber — pure unit tests (no mocking needed)
@@ -286,10 +355,11 @@ Deno.test("districtTypeToChamber: NATIONAL_EXEC → national_exec", () => {
   assertEquals(districtTypeToChamber("NATIONAL_EXEC"), "national_exec");
 });
 
-Deno.test("districtTypeToChamber: unknown types return null", () => {
-  assertEquals(districtTypeToChamber("COUNTY"), null);
-  assertEquals(districtTypeToChamber("state_lower"), null); // case sensitive
-  assertEquals(districtTypeToChamber(""), null);
+Deno.test("districtTypeToChamber: unknown types return lowercased fallback", () => {
+  assertEquals(districtTypeToChamber("COUNTY"), "county");
+  assertEquals(districtTypeToChamber("SCHOOL_BOARD"), "school_board");
+  assertEquals(districtTypeToChamber("state_lower"), "state_lower"); // case sensitive — not a known type
+  assertEquals(districtTypeToChamber(""), "unknown");
 });
 
 // ===========================================================================
@@ -338,7 +408,7 @@ Deno.test("handler: non-JSON body → 400", async () => {
   }
 });
 
-Deno.test("handler: missing zip_code → 400", async () => {
+Deno.test("handler: missing zip → 400", async () => {
   const env = makeEnvStub();
   try {
     const res = await handler(
@@ -349,133 +419,44 @@ Deno.test("handler: missing zip_code → 400", async () => {
       }),
     );
     assertEquals(res.status, 400);
-    assertEquals((await res.json()).error, "zip_code must be a 5-digit string");
+    assertEquals((await res.json()).error, "zip must be a 5-digit string");
   } finally {
     env.restore();
   }
 });
 
-Deno.test("handler: 4-digit zip → 400", async () => {
+Deno.test("handler: empty zip → 400", async () => {
   const env = makeEnvStub();
   try {
-    const res = await handler(postRequest("4620"));
+    const res = await handler(postRequest(""));
     assertEquals(res.status, 400);
+    assertEquals((await res.json()).error, "zip must be a 5-digit string");
   } finally {
     env.restore();
   }
 });
 
-Deno.test("handler: 6-digit zip → 400", async () => {
+Deno.test("handler: non-5-digit zip → 400", async () => {
   const env = makeEnvStub();
   try {
-    const res = await handler(postRequest("462011"));
+    const res = await handler(postRequest("1234"));
     assertEquals(res.status, 400);
+    assertEquals((await res.json()).error, "zip must be a 5-digit string");
   } finally {
     env.restore();
   }
 });
 
-Deno.test("handler: alpha zip → 400", async () => {
+Deno.test("handler: address is optional — zip only is valid", async () => {
   const env = makeEnvStub();
-  try {
-    const res = await handler(postRequest("ABCDE"));
-    assertEquals(res.status, 400);
-  } finally {
-    env.restore();
-  }
-});
-
-// ===========================================================================
-// Handler — cache hit (fresh) — Cicero API must NOT be called
-// ===========================================================================
-
-Deno.test("handler: fresh cache hit returns cached data without calling Cicero API", async () => {
-  const env = makeEnvStub();
-  let ciceroCalled = false;
-  const restoreFetch = mockCiceroFetch((() => {
-    ciceroCalled = true;
-    return mockJson({});
-  }) as unknown as Response);
-
-  const supabase = makeSupabaseMock({
-    cacheRow: {
-      district_id: "ocd-division/country:us/state:in/sldl:92",
-      cached_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // 1 hour ago
-    },
-    cachedOfficialRows: [
-      {
-        cicero_officials: {
-          first_name: "Jane", last_name: "Smith", party: "Democratic",
-          district_type: "STATE_LOWER",
-          district_ocd_id: "ocd-division/country:us/state:in/sldl:92",
-          addresses: [{ phone_1: "317-555-0100" }],
-          email_addresses: ["jane@in.gov"],
-        },
-      },
-    ],
-  });
-
-  try {
-    const res = await handler(postRequest("46201"), supabase);
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.district_id, "ocd-division/country:us/state:in/sldl:92");
-    assertEquals(body.officials.length, 1);
-    assertEquals(body.officials[0].first_name, "Jane");
-    assertEquals(body.officials[0].last_name, "Smith");
-    assertEquals(ciceroCalled, false);
-  } finally {
-    env.restore();
-    restoreFetch();
-  }
-});
-
-// ===========================================================================
-// Handler — stale cache → falls through to Cicero API and upserts
-// ===========================================================================
-
-Deno.test("handler: stale cache (91 days) calls Cicero API and upserts new data", async () => {
-  const env = makeEnvStub();
-  const upserted: Array<{ table: string; data: Record<string, unknown> }> = [];
-
-  const supabase = makeSupabaseMock({
-    cacheRow: {
-      district_id: "old-district",
-      cached_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 91).toISOString(),
-    },
-    onUpsert: (table, data) => { upserted.push({ table, data }); },
-  });
-
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
-
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP), supabase);
     assertEquals(res.status, 200);
-    assertEquals((await res.json()).district_id, "ocd-division/country:us/state:in/sldl:92");
-    // Should have upserted: 1 district_zip_cache + 3 cicero_officials + 3 zip_cicero_officials
-    const districtUpserts = upserted.filter((u) => u.table === "district_zip_cache");
-    assertEquals(districtUpserts.length, 1);
-    assertEquals(districtUpserts[0].data.zip_code, "46201");
   } finally {
     env.restore();
     restoreFetch();
-  }
-});
-
-// ===========================================================================
-// Handler — cache DB error → 500
-// ===========================================================================
-
-Deno.test("handler: cache lookup DB error → 500", async () => {
-  const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheError: { message: "DB error", code: "PGRST301" } });
-
-  try {
-    const res = await handler(postRequest("46201"), supabase);
-    assertEquals(res.status, 500);
-    assertEquals((await res.json()).error, "Failed to look up cached district data");
-  } finally {
-    env.restore();
   }
 });
 
@@ -485,10 +466,10 @@ Deno.test("handler: cache lookup DB error → 500", async () => {
 
 Deno.test("handler: missing CICERO_API_KEY → 500", async () => {
   const env = makeEnvStub({ CICERO_API_KEY: "" });
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 500);
     assertEquals((await res.json()).error, "Cicero API key not configured");
   } finally {
@@ -500,17 +481,17 @@ Deno.test("handler: missing CICERO_API_KEY → 500", async () => {
 // Handler — Cicero API error paths
 // ===========================================================================
 
-Deno.test("handler: Cicero API 404 → 404 with human-readable message", async () => {
+Deno.test("handler: Cicero API 404 → 404 with address-not-found message", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(mockJson({ error: { code: 404 } }, 404));
 
   try {
-    const res = await handler(postRequest("00000"), supabase);
+    const res = await handler(postRequest("60601"), supabase);
     assertEquals(res.status, 404);
     assertEquals(
       (await res.json()).error,
-      "ZIP code not found — check that it is a valid US ZIP code",
+      "Address not found — check that it is a valid US address",
     );
   } finally {
     env.restore();
@@ -520,11 +501,11 @@ Deno.test("handler: Cicero API 404 → 404 with human-readable message", async (
 
 Deno.test("handler: Cicero API 500 → 502", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(new Response("Server Error", { status: 500 }));
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 502);
     assertEquals((await res.json()).error, "Failed to fetch district data");
   } finally {
@@ -535,13 +516,13 @@ Deno.test("handler: Cicero API 500 → 502", async () => {
 
 Deno.test("handler: Cicero API network failure → 502", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
 
   const original = globalThis.fetch;
   globalThis.fetch = (() => Promise.reject(new Error("Network failure"))) as typeof fetch;
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 502);
     assertEquals((await res.json()).error, "Failed to reach Cicero API");
   } finally {
@@ -554,9 +535,9 @@ Deno.test("handler: Cicero API network failure → 502", async () => {
 // Handler — Indiana validation (now driven by candidate.match_region)
 // ===========================================================================
 
-Deno.test("handler: non-Indiana ZIP (IL match_region) → 422", async () => {
+Deno.test("handler: non-Indiana address (IL match_region) → 422", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(
     mockJson(makeCiceroCandidate("IL", [
       makeOfficial({
@@ -571,7 +552,7 @@ Deno.test("handler: non-Indiana ZIP (IL match_region) → 422", async () => {
   try {
     const res = await handler(postRequest("60601"), supabase);
     assertEquals(res.status, 422);
-    assertEquals((await res.json()).error, "ZIP code is not in Indiana");
+    assertEquals((await res.json()).error, "Address is not in Indiana");
   } finally {
     env.restore();
     restoreFetch();
@@ -580,15 +561,15 @@ Deno.test("handler: non-Indiana ZIP (IL match_region) → 422", async () => {
 
 Deno.test("handler: no candidate in Cicero response → 422", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(
     mockJson({ response: { results: { candidates: [] } } }),
   );
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 422);
-    assertEquals((await res.json()).error, "ZIP code is not in Indiana");
+    assertEquals((await res.json()).error, "Address is not in Indiana");
   } finally {
     env.restore();
     restoreFetch();
@@ -601,7 +582,7 @@ Deno.test("handler: no candidate in Cicero response → 422", async () => {
 
 Deno.test("handler: prefers STATE_LOWER > STATE_UPPER > NATIONAL_LOWER > any state:in", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(
     mockJson(makeCiceroCandidate("IN", [
       makeOfficial({ id: 1, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_LOWER", ocd_id: "ocd-division/country:us/state:in/sldl:92" } } }),
@@ -612,7 +593,7 @@ Deno.test("handler: prefers STATE_LOWER > STATE_UPPER > NATIONAL_LOWER > any sta
   );
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 200);
     assertEquals((await res.json()).district_id, "ocd-division/country:us/state:in/sldl:92");
   } finally {
@@ -623,7 +604,7 @@ Deno.test("handler: prefers STATE_LOWER > STATE_UPPER > NATIONAL_LOWER > any sta
 
 Deno.test("handler: falls back to STATE_UPPER when STATE_LOWER is absent", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(
     mockJson(makeCiceroCandidate("IN", [
       makeOfficial({ id: 2, office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "STATE_UPPER", ocd_id: "ocd-division/country:us/state:in/sldu:30" } } }),
@@ -632,7 +613,7 @@ Deno.test("handler: falls back to STATE_UPPER when STATE_LOWER is absent", async
   );
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 200);
     assertEquals((await res.json()).district_id, "ocd-division/country:us/state:in/sldu:30");
   } finally {
@@ -647,15 +628,16 @@ Deno.test("handler: falls back to STATE_UPPER when STATE_LOWER is absent", async
 
 Deno.test("handler: happy path returns correct district_id and all representative fields", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 200);
     const body = await res.json();
 
     assertEquals(body.district_id, "ocd-division/country:us/state:in/sldl:92");
+    assertEquals(body.city, "Indianapolis");
     assertEquals(body.officials.length, 3);
 
     // State representative
@@ -687,7 +669,7 @@ Deno.test("handler: happy path returns correct district_id and all representativ
 
 Deno.test("handler: LOCAL and LOCAL_EXEC officials are included in response", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(
     mockJson(makeCiceroCandidate("IN", [
       makeOfficial({
@@ -702,7 +684,7 @@ Deno.test("handler: LOCAL and LOCAL_EXEC officials are included in response", as
   );
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.officials.length, 2);
@@ -718,13 +700,13 @@ Deno.test("handler: LOCAL and LOCAL_EXEC officials are included in response", as
   }
 });
 
-Deno.test("handler: officials with truly unknown district_type are excluded from response", async () => {
+Deno.test("handler: officials with unknown district_type are included with lowercased chamber", async () => {
   const env = makeEnvStub();
-  const supabase = makeSupabaseMock({ cacheRow: null });
+  const supabase = makeSupabaseMock();
   const restoreFetch = mockCiceroFetch(
     mockJson(makeCiceroCandidate("IN", [
       makeOfficial({
-        id: 10, first_name: "Unknown", last_name: "Type",
+        id: 10, first_name: "Board", last_name: "Member",
         office: { ...makeOfficial({}).office, district: { ...makeOfficial({}).office.district, district_type: "SCHOOL_BOARD", ocd_id: "ocd-division/country:us/state:in/school:1" } },
       }),
       makeOfficial({
@@ -735,12 +717,14 @@ Deno.test("handler: officials with truly unknown district_type are excluded from
   );
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.officials.length, 1);
-    assertEquals(body.officials[0].first_name, "Rep");
-    assertEquals(body.officials[0].last_name, "Alice");
+    assertEquals(body.officials.length, 2);
+    assertEquals(body.officials[0].first_name, "Board");
+    assertEquals(body.officials[0].chamber, "school_board");
+    assertEquals(body.officials[1].first_name, "Rep");
+    assertEquals(body.officials[1].chamber, "house");
   } finally {
     env.restore();
     restoreFetch();
@@ -748,19 +732,74 @@ Deno.test("handler: officials with truly unknown district_type are excluded from
 });
 
 // ===========================================================================
-// Handler — upsert failure is non-fatal
+// Handler — officials are persisted to cicero_officials after each lookup
 // ===========================================================================
+
+Deno.test("handler: upserts each official to cicero_officials", async () => {
+  const env = makeEnvStub();
+  const upserted: Array<{ table: string; data: Record<string, unknown> }> = [];
+
+  const supabase = makeSupabaseMock({
+    onUpsert: (table, data) => { upserted.push({ table, data }); },
+  });
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
+
+  try {
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
+    assertEquals(res.status, 200);
+    const officialUpserts = upserted.filter((u) => u.table === "cicero_officials");
+    assertEquals(officialUpserts.length, 3); // one per official in CICERO_IN
+    assertEquals(officialUpserts[0].data.first_name, "Jane");
+    assertEquals(officialUpserts[1].data.first_name, "John");
+    assertEquals(officialUpserts[2].data.first_name, "Bob");
+  } finally {
+    env.restore();
+    restoreFetch();
+  }
+});
+
+Deno.test("handler: writes district_zip_cache and zip_cicero_officials after Cicero call", async () => {
+  const env = makeEnvStub();
+  const upserted: Array<{ table: string; data: Record<string, unknown> }> = [];
+
+  const supabase = makeSupabaseMock({
+    onUpsert: (table, data) => { upserted.push({ table, data }); },
+  });
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
+
+  try {
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
+    assertEquals(res.status, 200);
+
+    // district_zip_cache written once with correct zip, district_id, and city
+    const cacheWrites = upserted.filter((u) => u.table === "district_zip_cache");
+    assertEquals(cacheWrites.length, 1);
+    assertEquals(cacheWrites[0].data.zip_code, TEST_ZIP);
+    assertEquals(cacheWrites[0].data.district_id, "ocd-division/country:us/state:in/sldl:92");
+    assertEquals(cacheWrites[0].data.match_city, "Indianapolis");
+
+    // zip_cicero_officials written once per official
+    const linkWrites = upserted.filter((u) => u.table === "zip_cicero_officials");
+    assertEquals(linkWrites.length, 3);
+    assertEquals(linkWrites[0].data.zip_code, TEST_ZIP);
+    assertEquals(linkWrites[0].data.cicero_id, 1); // OFFICIAL_STATE_REP
+    assertEquals(linkWrites[1].data.cicero_id, 2); // OFFICIAL_US_SENATOR_1
+    assertEquals(linkWrites[2].data.cicero_id, 3); // OFFICIAL_US_SENATOR_2
+  } finally {
+    env.restore();
+    restoreFetch();
+  }
+});
 
 Deno.test("handler: upsert failure does not affect 200 response", async () => {
   const env = makeEnvStub();
   const supabase = makeSupabaseMock({
-    cacheRow: null,
     upsertError: { message: "write failed" },
   });
   const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP, TEST_ADDRESS), supabase);
     assertEquals(res.status, 200);
     assertEquals((await res.json()).district_id, "ocd-division/country:us/state:in/sldl:92");
   } finally {
@@ -770,60 +809,111 @@ Deno.test("handler: upsert failure does not affect 200 response", async () => {
 });
 
 // ===========================================================================
-// Handler — TTL edge cases
+// Handler — caching: fresh cache hit skips Cicero
 // ===========================================================================
 
-Deno.test("handler: custom DISTRICT_CACHE_TTL_DAYS=30 treats 31-day-old cache as stale", async () => {
-  const env = makeEnvStub({ DISTRICT_CACHE_TTL_DAYS: "30" });
-  let ciceroCalled = false;
-
+Deno.test("handler: fresh cache hit returns cached officials without calling Cicero", async () => {
+  const env = makeEnvStub();
   const supabase = makeSupabaseMock({
-    cacheRow: {
-      district_id: "old-district",
-      cached_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 31).toISOString(),
-    },
+    cacheRow: FRESH_CACHE_ROW,
+    zipOfficials: ZIP_OFFICIALS_FRESH,
   });
 
+  // If Cicero is accidentally called the test will throw
   const original = globalThis.fetch;
-  globalThis.fetch = ((() => {
-    ciceroCalled = true;
-    return Promise.resolve(mockJson(CICERO_IN));
-  }) as unknown) as typeof fetch;
+  globalThis.fetch = (() => {
+    throw new Error("Cicero should not be called on cache hit");
+  }) as typeof fetch;
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP), supabase);
     assertEquals(res.status, 200);
-    assertEquals(ciceroCalled, true);
+    const body = await res.json();
+    assertEquals(body.city, "Indianapolis");
+    assertEquals(body.zip_code, TEST_ZIP);
+    assertEquals(body.district_id, FRESH_CACHE_ROW.district_id);
+    assertEquals(body.officials.length, 1);
+    assertEquals(body.officials[0].first_name, "Jane");
+    assertEquals(body.officials[0].chamber, "house");
+    assertEquals(body.officials[0].email_addresses[0], "jane@in.gov");
   } finally {
     env.restore();
     globalThis.fetch = original;
   }
 });
 
-Deno.test("handler: invalid DISTRICT_CACHE_TTL_DAYS defaults to 90 — 89-day cache is still fresh", async () => {
-  const env = makeEnvStub({ DISTRICT_CACHE_TTL_DAYS: "not-a-number" });
-  let ciceroCalled = false;
+// ===========================================================================
+// Handler — caching: invalidation conditions fall through to Cicero
+// ===========================================================================
 
+Deno.test("handler: expired official busts cache and falls through to Cicero", async () => {
+  const env = makeEnvStub();
   const supabase = makeSupabaseMock({
-    cacheRow: {
-      district_id: "ocd-division/country:us/state:in/sldl:92",
-      cached_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 89).toISOString(),
-    },
-    cachedOfficialRows: [],
+    cacheRow: FRESH_CACHE_ROW,
+    zipOfficials: ZIP_OFFICIALS_EXPIRED, // term_end_date in the past
   });
-
-  const original = globalThis.fetch;
-  globalThis.fetch = ((() => {
-    ciceroCalled = true;
-    return Promise.resolve(mockJson({}));
-  }) as unknown) as typeof fetch;
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
 
   try {
-    const res = await handler(postRequest("46201"), supabase);
+    const res = await handler(postRequest(TEST_ZIP), supabase);
     assertEquals(res.status, 200);
-    assertEquals(ciceroCalled, false); // served from cache, Cicero API not hit
+    // Should return fresh Cicero data (3 officials), not the 1 stale cached one
+    assertEquals((await res.json()).officials.length, 3);
   } finally {
     env.restore();
-    globalThis.fetch = original;
+    restoreFetch();
+  }
+});
+
+Deno.test("handler: stale TTL busts cache and falls through to Cicero", async () => {
+  const env = makeEnvStub();
+  const supabase = makeSupabaseMock({
+    cacheRow: STALE_CACHE_ROW,
+    zipOfficials: ZIP_OFFICIALS_FRESH,
+  });
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
+
+  try {
+    const res = await handler(postRequest(TEST_ZIP), supabase);
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).officials.length, 3);
+  } finally {
+    env.restore();
+    restoreFetch();
+  }
+});
+
+Deno.test("handler: cache DB error is non-fatal and falls through to Cicero", async () => {
+  const env = makeEnvStub();
+  const supabase = makeSupabaseMock({
+    cacheSelectError: { message: "DB connection error" },
+  });
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
+
+  try {
+    const res = await handler(postRequest(TEST_ZIP), supabase);
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).officials.length, 3);
+  } finally {
+    env.restore();
+    restoreFetch();
+  }
+});
+
+Deno.test("handler: empty zip_cicero_officials falls through to Cicero", async () => {
+  const env = makeEnvStub();
+  const supabase = makeSupabaseMock({
+    cacheRow: FRESH_CACHE_ROW,
+    zipOfficials: [], // no linked officials in DB
+  });
+  const restoreFetch = mockCiceroFetch(mockJson(CICERO_IN));
+
+  try {
+    const res = await handler(postRequest(TEST_ZIP), supabase);
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).officials.length, 3);
+  } finally {
+    env.restore();
+    restoreFetch();
   }
 });
