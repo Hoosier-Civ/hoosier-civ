@@ -20,10 +20,18 @@ export class CiceroService {
     this.apiKey = key;
   }
 
-  async fetchOfficials(zipCode: string): Promise<CiceroOfficial[]> {
+  async fetchOfficials(
+    zip: string,
+    address?: string,
+  ): Promise<{ city: string; zipCode: string; officials: CiceroOfficial[] }> {
     const url = new URL(`${CICERO_API_BASE}/official`);
-    url.searchParams.set("search_postal", zipCode);
+    if (address) url.searchParams.set("search_address", address);
+    url.searchParams.set("search_state", "IN");
     url.searchParams.set("search_country", "US");
+    url.searchParams.set("order", "district_type");
+    url.searchParams.set("sort", "desc");
+    url.searchParams.set("search_postal", zip);
+    url.searchParams.set("max", "200");
     url.searchParams.set("key", this.apiKey);
 
     let res: Response;
@@ -36,7 +44,7 @@ export class CiceroService {
 
     if (res.status === 404) {
       throw new CiceroError(
-        "ZIP code not found — check that it is a valid US ZIP code",
+        "Address not found — check that it is a valid US address",
         404,
       );
     }
@@ -46,11 +54,14 @@ export class CiceroService {
     }
 
     const data = await res.json() as CiceroResponse;
-
     const candidate: CiceroCandidate | undefined = data?.response?.results?.candidates?.[0];
 
-    if (candidate?.match_region !== "IN") throw new CiceroError("ZIP code is not in Indiana", 422);
+    if (candidate?.match_region !== "IN") throw new CiceroError("Address is not in Indiana", 422);
 
-    return candidate?.officials ?? [];
+    return {
+      city: candidate.match_city ?? "",
+      zipCode: candidate.match_postal ?? "",
+      officials: candidate?.officials ?? [],
+    };
   }
 }

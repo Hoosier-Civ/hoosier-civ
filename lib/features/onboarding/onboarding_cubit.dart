@@ -40,25 +40,25 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     }
   }
 
-  /// Validates the ZIP locally then calls the lookup-district Edge Function.
+  /// Calls the lookup-district Edge Function with the user's ZIP code.
   ///
-  /// Rejects any ZIP not starting with 46 or 47 before making an API call.
-  Future<void> submitZip(String zip) async {
-    final trimmed = zip.trim();
+  /// Optionally accepts a street address for additional geocoding accuracy.
+  /// Indiana validation is handled server-side via Cicero's match_region check.
+  Future<void> submitAddress(String zip, {String? address}) async {
+    final trimmedZip = zip.trim();
 
-    if (!_isIndianaZip(trimmed)) {
-      emit(const OnboardingError(
-        'Please enter a valid Indiana ZIP code (starts with 46 or 47).',
-      ));
+    if (trimmedZip.isEmpty) {
+      emit(const OnboardingError('Please enter your ZIP code.'));
       return;
     }
 
     emit(const OnboardingZipLoading());
 
     try {
-      final result = await _districtRepository.lookupDistrict(trimmed);
+      final result = await _districtRepository.lookupDistrict(trimmedZip, address: address?.trim().isEmpty == true ? null : address?.trim());
       emit(OnboardingZipVerified(
-        zipCode: trimmed,
+        zipCode: result.zipCode,
+        city: result.city,
         districtId: result.districtId,
         officials: result.officials,
       ));
@@ -77,6 +77,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
     emit(OnboardingAuthPending(
       zipCode: current.zipCode,
+      city: current.city,
       districtId: current.districtId,
       officials: current.officials,
     ));
@@ -137,11 +138,8 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     return super.close();
   }
 
-  static bool _isIndianaZip(String zip) {
-    if (zip.length != 5) return false;
-    final prefix = int.tryParse(zip.substring(0, 2));
-    return prefix == 46 || prefix == 47;
-  }
+  /// Resets the flow back to the initial state. Intended for dev/testing only.
+  void reset() => emit(const OnboardingInitial());
 
   static String _stripExceptionPrefix(Exception e) =>
       e.toString().replaceFirst('Exception: ', '');

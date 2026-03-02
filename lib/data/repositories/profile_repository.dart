@@ -39,11 +39,8 @@ class ProfileRepository {
       'onboarding_completed': profile.onboardingCompleted,
     };
 
-    final data = await _supabase
-        .from('profiles')
-        .upsert(payload)
-        .select()
-        .single();
+    final data =
+        await _supabase.from('profiles').upsert(payload).select().single();
 
     return ProfileModel.fromJson(data);
   }

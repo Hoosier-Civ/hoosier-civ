@@ -45,7 +45,12 @@ const _emptyOfficial = OfficialResponse(
   committees: [],
 );
 
+const _testAddress = '123 E Washington St, Indianapolis, IN';
+const _testZip = '46204';
+
 const _lookupResult = DistrictLookupResult(
+  city: 'Indianapolis',
+  zipCode: _testZip,
   districtId: 'ocd-division/country:us/state:in/sldu:1',
   officials: [_emptyOfficial],
 );
@@ -77,40 +82,40 @@ void main() {
     registerFallbackValue(_FakeProfileModel());
   });
 
-  group('submitZip', () {
+  group('submitAddress', () {
     blocTest<OnboardingCubit, OnboardingState>(
-      'emits OnboardingError for non-Indiana ZIP (starts with 45)',
+      'emits OnboardingError for empty zip',
       build: () => _makeCubit(),
-      act: (cubit) => cubit.submitZip('45202'),
+      act: (cubit) => cubit.submitAddress(''),
       expect: () => [
         isA<OnboardingError>().having(
           (e) => e.message,
           'message',
-          contains('Indiana'),
+          contains('ZIP'),
         ),
       ],
     );
 
     blocTest<OnboardingCubit, OnboardingState>(
-      'emits OnboardingError for ZIP shorter than 5 digits',
+      'emits OnboardingError for whitespace-only zip',
       build: () => _makeCubit(),
-      act: (cubit) => cubit.submitZip('461'),
+      act: (cubit) => cubit.submitAddress('   '),
       expect: () => [isA<OnboardingError>()],
     );
 
     blocTest<OnboardingCubit, OnboardingState>(
-      'emits [ZipLoading, ZipVerified] for valid Indiana ZIP starting with 46',
+      'emits [ZipLoading, ZipVerified] for valid Indiana zip',
       build: () {
         final repo = MockDistrictRepository();
-        when(() => repo.lookupDistrict('46204'))
+        when(() => repo.lookupDistrict(_testZip, address: any(named: 'address')))
             .thenAnswer((_) async => _lookupResult);
         return _makeCubit(districtRepo: repo);
       },
-      act: (cubit) => cubit.submitZip('46204'),
+      act: (cubit) => cubit.submitAddress(_testZip),
       expect: () => [
         isA<OnboardingZipLoading>(),
         isA<OnboardingZipVerified>()
-            .having((s) => s.zipCode, 'zipCode', '46204')
+            .having((s) => s.zipCode, 'zipCode', _testZip)
             .having(
               (s) => s.districtId,
               'districtId',
@@ -121,26 +126,26 @@ void main() {
     );
 
     blocTest<OnboardingCubit, OnboardingState>(
-      'emits [ZipLoading, ZipVerified] for valid Indiana ZIP starting with 47',
+      'passes optional address to lookupDistrict',
       build: () {
         final repo = MockDistrictRepository();
-        when(() => repo.lookupDistrict('47401'))
+        when(() => repo.lookupDistrict(_testZip, address: _testAddress))
             .thenAnswer((_) async => _lookupResult);
         return _makeCubit(districtRepo: repo);
       },
-      act: (cubit) => cubit.submitZip('47401'),
+      act: (cubit) => cubit.submitAddress(_testZip, address: _testAddress),
       expect: () => [isA<OnboardingZipLoading>(), isA<OnboardingZipVerified>()],
     );
 
     blocTest<OnboardingCubit, OnboardingState>(
-      'trims whitespace before validating',
+      'trims whitespace before submitting',
       build: () {
         final repo = MockDistrictRepository();
-        when(() => repo.lookupDistrict('46204'))
+        when(() => repo.lookupDistrict(_testZip, address: any(named: 'address')))
             .thenAnswer((_) async => _lookupResult);
         return _makeCubit(districtRepo: repo);
       },
-      act: (cubit) => cubit.submitZip('  46204  '),
+      act: (cubit) => cubit.submitAddress('  $_testZip  '),
       expect: () => [isA<OnboardingZipLoading>(), isA<OnboardingZipVerified>()],
     );
 
@@ -148,12 +153,12 @@ void main() {
       'emits OnboardingError when lookupDistrict throws',
       build: () {
         final repo = MockDistrictRepository();
-        when(() => repo.lookupDistrict(any())).thenThrow(
+        when(() => repo.lookupDistrict(any(), address: any(named: 'address'))).thenThrow(
           Exception('District not found'),
         );
         return _makeCubit(districtRepo: repo);
       },
-      act: (cubit) => cubit.submitZip('46204'),
+      act: (cubit) => cubit.submitAddress(_testZip),
       expect: () => [
         isA<OnboardingZipLoading>(),
         isA<OnboardingError>().having(
@@ -177,7 +182,7 @@ void main() {
       'emits OnboardingAuthPending and calls signInWithOAuth',
       build: () {
         final repo = MockDistrictRepository();
-        when(() => repo.lookupDistrict('46204'))
+        when(() => repo.lookupDistrict(_testZip, address: any(named: 'address')))
             .thenAnswer((_) async => _lookupResult);
 
         final auth = MockAuthService();
@@ -196,14 +201,14 @@ void main() {
         );
       },
       act: (cubit) async {
-        await cubit.submitZip('46204');
+        await cubit.submitAddress(_testZip);
         await cubit.submitAuth(OAuthProvider.google);
       },
       expect: () => [
         isA<OnboardingZipLoading>(),
         isA<OnboardingZipVerified>(),
         isA<OnboardingAuthPending>()
-            .having((s) => s.zipCode, 'zipCode', '46204')
+            .having((s) => s.zipCode, 'zipCode', _testZip)
             .having((s) => s.districtId, 'districtId', _lookupResult.districtId)
             .having(
               (s) => s.officials,
@@ -217,7 +222,7 @@ void main() {
       'emits OnboardingError when signInWithOAuth throws',
       build: () {
         final repo = MockDistrictRepository();
-        when(() => repo.lookupDistrict('46204'))
+        when(() => repo.lookupDistrict(_testZip, address: any(named: 'address')))
             .thenAnswer((_) async => _lookupResult);
 
         final auth = MockAuthService();
@@ -236,7 +241,7 @@ void main() {
         );
       },
       act: (cubit) async {
-        await cubit.submitZip('46204');
+        await cubit.submitAddress(_testZip);
         await cubit.submitAuth(OAuthProvider.google);
       },
       expect: () => [
@@ -299,7 +304,7 @@ void main() {
       when(() => gamification.awardXp(any())).thenReturn(null);
 
       final districtRepo = MockDistrictRepository();
-      when(() => districtRepo.lookupDistrict('46204'))
+      when(() => districtRepo.lookupDistrict(_testZip, address: any(named: 'address')))
           .thenAnswer((_) async => _lookupResult);
 
       final cubit = OnboardingCubit(
@@ -312,7 +317,7 @@ void main() {
       final states = <OnboardingState>[];
       final sub = cubit.stream.listen(states.add);
 
-      await cubit.submitZip('46204');
+      await cubit.submitAddress(_testZip);
       await cubit.submitAuth(OAuthProvider.google);
 
       // Simulate the OAuth deep-link returning — fire the event and then
@@ -355,7 +360,7 @@ void main() {
       final gamification = MockGamificationCubit();
 
       final districtRepo = MockDistrictRepository();
-      when(() => districtRepo.lookupDistrict('46204'))
+      when(() => districtRepo.lookupDistrict(_testZip, address: any(named: 'address')))
           .thenAnswer((_) async => _lookupResult);
 
       final cubit = OnboardingCubit(
@@ -368,7 +373,7 @@ void main() {
       final states = <OnboardingState>[];
       final sub = cubit.stream.listen(states.add);
 
-      await cubit.submitZip('46204');
+      await cubit.submitAddress(_testZip);
       await cubit.submitAuth(OAuthProvider.google);
 
       final fakeSession = _FakeSession();
