@@ -1,5 +1,6 @@
 {
   "nodeModulesDir": "auto",
+  "lock": false,
   "tasks": {
     "test": "deno test --allow-env **/*.test.ts"
   }

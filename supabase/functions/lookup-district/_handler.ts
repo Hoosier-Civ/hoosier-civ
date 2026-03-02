@@ -1,8 +1,8 @@
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js";
 import { LookUpDistrictController } from "./controller.ts";
 import { CiceroError, CiceroOfficial, CiceroService } from "./cicero_service.ts";
-import { CacheError, DistrictCacheService } from "./district_cache_service.ts";
 import { CiceroDistrictType } from "./cicero_types.ts";
+import { CacheRow, DistrictCacheService } from "./district_cache_service.ts";
 
 export interface OfficialResponse {
   cicero_id: number;
@@ -44,7 +44,7 @@ export interface OfficialResponse {
   birth_date?: string;
 }
 
-export function districtTypeToChamber(districtType: string): string | null {
+export function districtTypeToChamber(districtType: string): string {
   switch (districtType) {
     case "NATIONAL_UPPER":  return "us_senate";
     case "NATIONAL_LOWER":  return "us_house";
@@ -54,9 +54,10 @@ export function districtTypeToChamber(districtType: string): string | null {
     case "STATE_EXEC":      return "state_exec";
     case "LOCAL":           return "local";
     case "LOCAL_EXEC":      return "local_exec";
-    default: return null;
+    default: return districtType ? districtType.toLowerCase() : "unknown";
   }
 }
+
 
 // deno-lint-ignore no-explicit-any
 export type SupabaseFactory = () => Pick<SupabaseClient, "from"> | any;
@@ -76,9 +77,8 @@ function errorResponse(message: string, status: number): Response {
 }
 
 /** Maps a Cicero API official to the OfficialResponse shape. */
-function fromCiceroOfficial(o: CiceroOfficial): OfficialResponse | null {
+function fromCiceroOfficial(o: CiceroOfficial): OfficialResponse {
   const chamber = districtTypeToChamber(o.office?.district?.district_type ?? "");
-  if (!chamber) return null;
   return {
     cicero_id: o.id,
     first_name: o.first_name,
@@ -112,52 +112,59 @@ function fromCiceroOfficial(o: CiceroOfficial): OfficialResponse | null {
   };
 }
 
-/** Maps a cicero_officials DB row (flat columns) to the OfficialResponse shape. */
+/** Maps a cicero_officials DB row to the OfficialResponse shape. */
 // deno-lint-ignore no-explicit-any
-function fromCacheRow(o: any): OfficialResponse | null {
-  const chamber = districtTypeToChamber(o.district_type ?? "");
-  if (!chamber) return null;
+function fromCacheRow(row: any): OfficialResponse {
   return {
-    cicero_id: o.cicero_id,
-    first_name: o.first_name,
-    last_name: o.last_name,
-    middle_initial: o.middle_initial || undefined,
-    salutation: o.salutation || undefined,
-    nickname: o.nickname || undefined,
-    preferred_name: o.preferred_name || undefined,
-    name_suffix: o.name_suffix || undefined,
-    chamber,
-    office_title: o.office_title || undefined,
-    party: o.party || undefined,
-    district_type: o.district_type || undefined,
-    district_ocd_id: o.district_ocd_id || undefined,
-    district_state: o.district_state || undefined,
-    district_city: o.district_city || undefined,
-    district_label: o.district_label || undefined,
-    chamber_name: o.chamber_name || undefined,
-    chamber_name_formal: o.chamber_name_formal || undefined,
-    photo_url: o.photo_url || undefined,
-    website_url: o.website_url || undefined,
-    web_form_url: o.web_form_url || undefined,
-    addresses: o.addresses ?? [],
-    email_addresses: o.email_addresses ?? [],
-    identifiers: o.identifiers ?? [],
-    committees: o.committees ?? [],
-    term_start_date: o.term_start_date || undefined,
-    term_end_date: o.term_end_date || undefined,
-    bio: o.bio || undefined,
-    birth_date: o.birth_date || undefined,
+    cicero_id: row.cicero_id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    middle_initial: row.middle_initial ?? undefined,
+    salutation: row.salutation ?? undefined,
+    nickname: row.nickname ?? undefined,
+    preferred_name: row.preferred_name ?? undefined,
+    name_suffix: row.name_suffix ?? undefined,
+    chamber: districtTypeToChamber(row.district_type ?? ""),
+    office_title: row.office_title ?? undefined,
+    party: row.party ?? undefined,
+    district_type: row.district_type ?? undefined,
+    district_ocd_id: row.district_ocd_id ?? undefined,
+    district_state: row.district_state ?? undefined,
+    district_city: row.district_city ?? undefined,
+    district_label: row.district_label ?? undefined,
+    chamber_name: row.chamber_name ?? undefined,
+    chamber_name_formal: row.chamber_name_formal ?? undefined,
+    photo_url: row.photo_url ?? undefined,
+    website_url: row.website_url ?? undefined,
+    web_form_url: row.web_form_url ?? undefined,
+    addresses: row.addresses ?? [],
+    email_addresses: row.email_addresses ?? [],
+    identifiers: row.identifiers ?? [],
+    committees: row.committees ?? [],
+    term_start_date: row.term_start_date ?? undefined,
+    term_end_date: row.term_end_date ?? undefined,
+    bio: row.bio ?? undefined,
+    birth_date: row.birth_date ?? undefined,
   };
 }
 
-/** Upserts all officials into cicero_officials and zip_cicero_officials. Non-fatal on error. */
+/** Returns true if any official's term has already ended. */
 // deno-lint-ignore no-explicit-any
-async function upsertOfficials(supabase: any, zipCode: string, officials: CiceroOfficial[]): Promise<void> {
+function hasAnyExpiredOfficial(officials: any[]): boolean {
+  const today = new Date().toISOString().split("T")[0];
+  return officials.some(
+    (o) => o.term_end_date != null && o.term_end_date < today,
+  );
+}
+
+/** Upserts all officials into cicero_officials and links them to the ZIP. Non-fatal on error. */
+// deno-lint-ignore no-explicit-any
+async function upsertOfficials(supabase: any, zip: string, officials: CiceroOfficial[]): Promise<void> {
   for (const o of officials) {
     const birthDateRaw = o.notes?.[1];
     const birthDate = birthDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(birthDateRaw) ? birthDateRaw : null;
 
-    const { error: officialError } = await supabase.from("cicero_officials").upsert({
+    const { error } = await supabase.from("cicero_officials").upsert({
       cicero_id: o.id,
       first_name: o.first_name,
       last_name: o.last_name,
@@ -191,17 +198,18 @@ async function upsertOfficials(supabase: any, zipCode: string, officials: Cicero
       cached_at: new Date().toISOString(),
     });
 
-    if (officialError) {
-      console.error("Failed to upsert official:", o.id, officialError.message);
+    if (error) {
+      console.error("Failed to upsert official:", o.id, error.message);
     }
 
-    const { error: joinError } = await supabase.from("zip_cicero_officials").upsert({
-      zip_code: zipCode,
+    // Link this official to the ZIP code
+    const { error: linkError } = await supabase.from("zip_cicero_officials").upsert({
+      zip_code: zip,
       cicero_id: o.id,
     });
 
-    if (joinError) {
-      console.error("Failed to upsert zip_cicero_officials:", o.id, joinError.message);
+    if (linkError) {
+      console.error("Failed to upsert zip_cicero_officials:", o.id, linkError.message);
     }
   }
 }
@@ -214,47 +222,51 @@ export async function handler(
   const controller = new LookUpDistrictController(req);
   const validationError = await controller.validateRequest();
   if (validationError) return validationError;
-  const { zipCode } = controller;
-
-  // --- TTL config ---
-  const rawCacheTtl = Deno.env.get("DISTRICT_CACHE_TTL_DAYS");
-  let cacheTtlDays = parseInt(rawCacheTtl ?? "", 10);
-  if (!Number.isFinite(cacheTtlDays) || cacheTtlDays <= 0) cacheTtlDays = 90;
+  const { zip, address } = controller;
 
   const supabase = makeSupabase();
+  const ttlDays = Number(Deno.env.get("DISTRICT_CACHE_TTL_DAYS") ?? "90");
+  const cache = new DistrictCacheService(supabase);
 
   // --- Cache check ---
-  const cache = new DistrictCacheService(supabase);
-  let cached;
+  let cacheRow: CacheRow | null = null;
   try {
-    cached = await cache.get(zipCode);
-  } catch (err) {
-    const status = err instanceof CacheError ? err.httpStatus : 500;
-    const message = err instanceof Error ? err.message : "Failed to look up cached district data";
-    return errorResponse(message, status);
+    cacheRow = await cache.get(zip);
+  } catch (_err) {
+    // Non-fatal: cache lookup failed, fall through to Cicero
   }
 
-  if (cached && cache.isFresh(cached.cached_at, cacheTtlDays)) {
-    const { data: joinRows } = await supabase
+  if (cacheRow && cache.isFresh(cacheRow.cached_at, ttlDays)) {
+    const { data: zipRows, error: joinError } = await supabase
       .from("zip_cicero_officials")
       .select("cicero_officials(*)")
-      .eq("zip_code", zipCode);
+      .eq("zip_code", zip);
 
-    const officials = (joinRows ?? [])
-      .map((r: { cicero_officials: unknown }) => fromCacheRow(r.cicero_officials))
-      .filter((o: OfficialResponse | null): o is OfficialResponse => o !== null);
-
-    return new Response(
-      JSON.stringify({ district_id: cached.district_id, officials }),
-      { headers: { "Content-Type": "application/json" } },
-    );
+    // deno-lint-ignore no-explicit-any
+    if (!joinError && (zipRows as any[])?.length > 0) {
+      // deno-lint-ignore no-explicit-any
+      const officials = (zipRows as any[]).map((row: any) => row.cicero_officials);
+      if (!hasAnyExpiredOfficial(officials)) {
+        return new Response(
+          JSON.stringify({
+            city: cacheRow.match_city ?? "",
+            zip_code: zip,
+            district_id: cacheRow.district_id,
+            officials: officials.map(fromCacheRow),
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
+    }
   }
 
   // --- Cicero API ---
+  let city: string;
+  let zipCode: string;
   let officials: CiceroOfficial[];
   try {
     const cicero = new CiceroService();
-    officials = await cicero.fetchOfficials(zipCode);
+    ({ city, zipCode, officials } = await cicero.fetchOfficials(zip, address));
   } catch (err) {
     const status = err instanceof CiceroError ? err.httpStatus : 502;
     const message = err instanceof Error ? err.message : "Failed to reach Cicero API";
@@ -273,18 +285,16 @@ export async function handler(
     officials.find((o) => o.office?.district?.ocd_id?.includes("state:in"))?.office?.district?.ocd_id ??
     "";
 
-  if (!districtId) return errorResponse("Could not determine district for this ZIP code", 422);
+  if (!districtId) return errorResponse("Could not determine district for this address", 422);
 
-  // --- Cache writes (non-fatal) ---
-  await cache.upsert(zipCode, districtId);
-  await upsertOfficials(supabase, zipCode, officials);
+  // --- Persist to cache and DB (non-fatal) ---
+  await cache.upsert(zip, districtId, city);
+  await upsertOfficials(supabase, zip, officials);
 
-  const officialResponses = officials
-    .map(fromCiceroOfficial)
-    .filter((o): o is OfficialResponse => o !== null);
+  const officialResponses = officials.map(fromCiceroOfficial);
 
   return new Response(
-    JSON.stringify({ district_id: districtId, officials: officialResponses }),
+    JSON.stringify({ city, zip_code: zipCode, district_id: districtId, officials: officialResponses }),
     { headers: { "Content-Type": "application/json" } },
   );
 }
