@@ -287,7 +287,7 @@ class _DistrictSummary extends StatelessWidget {
         ),
         const SizedBox(height: 32),
         ElevatedButton(
-          onPressed: () => context.go(AppConstants.routeHome),
+          onPressed: () => context.go(AppConstants.routeOnboardingInterests),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
             textStyle: const TextStyle(
