@@ -67,19 +67,58 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     }
   }
 
-  /// Triggers Google or Apple Sign-In via Supabase OAuth.
+  /// Stores the user's selected interest categories in state.
   ///
-  /// Emits [OnboardingAuthPending] immediately. [_onAuthStateChange] handles
-  /// completion once the OAuth deep-link returns to the app.
-  Future<void> submitAuth(OAuthProvider provider) async {
+  /// Transitions from [OnboardingZipVerified] to [OnboardingInterestsSelected].
+  /// Does nothing if the current state is not [OnboardingZipVerified].
+  void selectInterests(List<String> interests) {
     final current = state;
     if (current is! OnboardingZipVerified) return;
 
-    emit(OnboardingAuthPending(
+    emit(OnboardingInterestsSelected(
       zipCode: current.zipCode,
       city: current.city,
       districtId: current.districtId,
       officials: current.officials,
+      selectedInterests: List.unmodifiable(interests),
+    ));
+  }
+
+  /// Triggers Google or Apple Sign-In via Supabase OAuth.
+  ///
+  /// Emits [OnboardingAuthPending] immediately. [_onAuthStateChange] handles
+  /// completion once the OAuth deep-link returns to the app.
+  /// Accepts either [OnboardingZipVerified] or [OnboardingInterestsSelected]
+  /// as the current state.
+  Future<void> submitAuth(OAuthProvider provider) async {
+    final current = state;
+    final result = switch (current) {
+      OnboardingZipVerified() => (
+          current.zipCode,
+          current.city,
+          current.districtId,
+          current.officials,
+          <String>[],
+        ),
+      OnboardingInterestsSelected() => (
+          current.zipCode,
+          current.city,
+          current.districtId,
+          current.officials,
+          current.selectedInterests,
+        ),
+      _ => null,
+    };
+    if (result == null) return;
+
+    final (zipCode, city, districtId, officials, interests) = result;
+
+    emit(OnboardingAuthPending(
+      zipCode: zipCode,
+      city: city,
+      districtId: districtId,
+      officials: officials,
+      selectedInterests: interests,
     ));
 
     try {
@@ -114,7 +153,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
           streakCount: 0,
           zipCode: current.zipCode,
           districtId: current.districtId,
-          interests: const [],
+          interests: current.selectedInterests,
           onboardingCompleted: true,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),

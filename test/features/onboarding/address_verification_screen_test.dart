@@ -22,6 +22,11 @@ GoRouter _routerFor(Widget home) => GoRouter(
           builder: (_, __) => const Scaffold(body: Text('HomeScreen')),
         ),
         GoRoute(
+          path: AppConstants.routeOnboardingInterests,
+          builder: (_, __) =>
+              const Scaffold(body: Text('InterestSelectScreen')),
+        ),
+        GoRoute(
           path: AppConstants.routeOnboardingAuth,
           builder: (_, __) => const Scaffold(body: Text('AuthScreen')),
         ),
@@ -227,14 +232,15 @@ void main() {
       expect(find.text('1 official'), findsOneWidget);
     });
 
-    testWidgets('Continue button navigates to home screen', (tester) async {
+    testWidgets('Continue button navigates to interest select screen',
+        (tester) async {
       when(() => cubit.state).thenReturn(_verifiedState);
 
       await tester.pumpWidget(_wrap(cubit));
       await tester.tap(find.widgetWithText(ElevatedButton, 'Continue'));
       await tester.pumpAndSettle();
 
-      expect(find.text('HomeScreen'), findsOneWidget);
+      expect(find.text('InterestSelectScreen'), findsOneWidget);
     });
 
     testWidgets('tapping a row expands to show official name and title',

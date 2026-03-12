@@ -170,6 +170,45 @@ void main() {
     );
   });
 
+  group('selectInterests', () {
+    blocTest<OnboardingCubit, OnboardingState>(
+      'does nothing when state is not OnboardingZipVerified',
+      build: () => _makeCubit(),
+      act: (cubit) => cubit.selectInterests(['voting']),
+      expect: () => [],
+    );
+
+    blocTest<OnboardingCubit, OnboardingState>(
+      'emits OnboardingInterestsSelected with selected interests',
+      build: () {
+        final repo = MockDistrictRepository();
+        when(() => repo.lookupDistrict(_testZip, address: any(named: 'address')))
+            .thenAnswer((_) async => _lookupResult);
+        return _makeCubit(districtRepo: repo);
+      },
+      act: (cubit) async {
+        await cubit.submitAddress(_testZip);
+        cubit.selectInterests(['voting', 'community']);
+      },
+      expect: () => [
+        isA<OnboardingZipLoading>(),
+        isA<OnboardingZipVerified>(),
+        isA<OnboardingInterestsSelected>()
+            .having(
+              (s) => s.selectedInterests,
+              'selectedInterests',
+              ['voting', 'community'],
+            )
+            .having((s) => s.zipCode, 'zipCode', _testZip)
+            .having(
+              (s) => s.districtId,
+              'districtId',
+              _lookupResult.districtId,
+            ),
+      ],
+    );
+  });
+
   group('submitAuth', () {
     blocTest<OnboardingCubit, OnboardingState>(
       'does nothing when state is not OnboardingZipVerified',

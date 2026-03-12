@@ -4,6 +4,7 @@ import 'package:hoosierciv/features/bills/bill_detail_screen.dart';
 import 'package:hoosierciv/features/home/home_screen.dart';
 import 'package:hoosierciv/features/missions/mission_detail_screen.dart';
 import 'package:hoosierciv/features/onboarding/address_verification_screen.dart';
+import 'package:hoosierciv/features/onboarding/interest_select_screen.dart';
 import 'package:hoosierciv/features/onboarding/onboarding_auth_screen.dart';
 import 'package:hoosierciv/features/onboarding/onboarding_screen.dart';
 import 'package:hoosierciv/features/onboarding/onboarding_value_prop_screen.dart';
@@ -25,6 +26,10 @@ class AppRouter {
       GoRoute(
         path: AppConstants.routeOnboardingValueProp,
         builder: (context, state) => const OnboardingValuePropScreen(),
+      ),
+      GoRoute(
+        path: AppConstants.routeOnboardingInterests,
+        builder: (context, state) => const InterestSelectScreen(),
       ),
       GoRoute(
         path: AppConstants.routeOnboardingAuth,

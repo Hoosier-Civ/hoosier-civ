@@ -26,17 +26,35 @@ final class OnboardingZipVerified extends OnboardingState {
   });
 }
 
+final class OnboardingInterestsSelected extends OnboardingState {
+  final String zipCode;
+  final String city;
+  final String districtId;
+  final List<OfficialResponse> officials;
+  final List<String> selectedInterests;
+
+  const OnboardingInterestsSelected({
+    required this.zipCode,
+    required this.city,
+    required this.districtId,
+    required this.officials,
+    required this.selectedInterests,
+  });
+}
+
 final class OnboardingAuthPending extends OnboardingState {
   final String zipCode;
   final String city;
   final String districtId;
   final List<OfficialResponse> officials;
+  final List<String> selectedInterests;
 
   const OnboardingAuthPending({
     required this.zipCode,
     required this.city,
     required this.districtId,
     required this.officials,
+    this.selectedInterests = const [],
   });
 }
 
